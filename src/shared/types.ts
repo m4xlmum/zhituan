@@ -95,6 +95,24 @@ export interface UiConfig {
    */
   readerOpacity: number
   /**
+   * 阅读排版三项：字号（px）、行距（倍数）、左右留白（相对正文宽的百分比）。
+   *
+   * **只作用于本机 EPUB 那一页。** PDF 那边是一张位图，字号印死在像素里；
+   * TXT 那边是 Chromium 自己排的，我们能碰的只有整页那一层（见 readerOpacity）。
+   * 而 EPUB 的章节进的是我们自己的 Shadow DOM（book/BookApp.vue），排版归我们，
+   * 于是这一组才有对象——与 readerOpacity 同一条规矩：没有对象就禁掉，不装作能点。
+   *
+   * 三项都必须**压得过书自己写的排版**：书里动不动就是 `body { font-size: 20px }`，
+   * 用户拉一下字号就该看见字变了，被书锁住会让控件看起来是坏的。因此它们落在
+   * 书样式表**之后**的那一层并带 `!important`（书页里的 READER 那一块）。
+   *
+   * 默认值与这一页原先写死的那组排版**逐字相同**（17px / 1.85 / 6%），
+   * 因此老配置一个数都不用迁——与 readerOpacity 默认给 1 是同一个道理。
+   */
+  readerFontSize: number
+  readerLineHeight: number
+  readerMargin: number
+  /**
    * 悬浮球画哪个图标。
    *
    * 内置的几个画在代码里（`chrome/BallGlyph.vue`），`'custom'` 指的是

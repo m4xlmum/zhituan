@@ -9,8 +9,8 @@
  *
  *   1. index.ts 亲手装配的那一整套在场时（托盘、老板键、面板、更新服务……），
  *      点顶栏那颗「起始页」键之后，正文区那一点到底归谁——这正是用户那一刻的处境；
- *   2. 起始页那一份文档在**真桥**上活着没有：拿不拿得到 window.moyu、点栏目换不换栏、
- *      点行开不开标签页。以前那些探针全用假桥喂 `window.moyu`，若毛病出在真桥上，
+ *   2. 起始页那一份文档在**真桥**上活着没有：拿不拿得到 window.zhituan、点栏目换不换栏、
+ *      点行开不开标签页。以前那些探针全用假桥喂 `window.zhituan`，若毛病出在真桥上，
  *      它们一个都照不出来，而用户报的正是「点了没反应」；
  *   3. 配置写进口袋之后，界面手里那份镜像跟不跟得上（A10 / A11）。这条线由
  *      index.ts 亲手接（ConfigStore 的订阅 → 广播），别的探针都够不着——它们
@@ -56,8 +56,23 @@ const { pathToFileURL } = require('node:url')
 
 const ROOT = path.join(__dirname, '..')
 const OUT_DIR = path.join(__dirname, 'out')
-const REAL_USER_DATA = path.join(app.getPath('appData'), 'moyu-reader')
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
+
+/*
+ * 抄的是**用户自己那一份**数据（只读），因此两个名字都要看。
+ *
+ * `%APPDATA%\zhituan` 是改名之后的名字，但它只有「用户真跑过一次新版」才会存在；
+ * 在那之前数据还躺在 `%APPDATA%\moyu-reader` 下。只看前者的话，这一跑会**静默地**
+ * 变成「用默认配置跑」——探针自己不会说，读数照样好看。
+ */
+const APP_DATA = app.getPath('appData')
+const REAL_USER_DATA = [path.join(APP_DATA, 'zhituan'), path.join(APP_DATA, 'moyu-reader')].find((p) =>
+  fs.existsSync(p)
+)
+
+// A13 要一本真的 EPUB，而**不能去读用户机器上任何真实文件**（与 A12 那一本同一条规矩）：
+// 那本书由 zip-store.cjs 现造，实现与理由都在那个文件头里
+const { probeBook } = require('./zip-store.cjs')
 
 const results = []
 const consoleLines = []
@@ -93,7 +108,12 @@ const withTimeout = (promise, ms, what) =>
 
 // ------------------------------------------------------------ 抄一份 userData
 
-const TEMP = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-live-'))
+const { makeTempUserData, removeTemp } = require('./probe-temp.cjs')
+
+/**
+ * 这一跑用的临时 userData。顺手清掉上次没收走的那几份，理由见 probe-temp.cjs。
+ */
+const TEMP = makeTempUserData('zhituan-live-')
 
 /*
  * 屏幕之外的那个位置**必须写死**。
@@ -111,6 +131,7 @@ const OFF_X = -4000
 const OFF_Y = -4000
 
 for (const f of ['config.json', 'history.json', 'bookmarks.json', 'ball-icon.json']) {
+  if (!REAL_USER_DATA) break
   try {
     const text = fs.readFileSync(path.join(REAL_USER_DATA, f), 'utf8')
     if (f === 'config.json') {
@@ -132,6 +153,21 @@ for (const f of ['config.json', 'history.json', 'bookmarks.json', 'ball-icon.jso
   }
 }
 
+/*
+ * 两道隔离，缺一不可——**第二条是踩出来的**。
+ *
+ * `userData` 管的是「这个 app 把配置、缓存、登录态放哪儿」；而主进程里那句
+ * 改名搬迁（`migrateLegacyUserData()`）判的是 **`app.getPath('appData')`** 底下的
+ * 两个目录，它读的**不是** userData。只改 userData 的话，探针每跑一次都会在用户
+ * 的真目录上做一次 `moyu-reader → zhituan` 的整目录搬运。
+ *
+ * 而那个搬运会拷到一半失败（真实用户目录里总有文件被别的进程拿着），于是
+ * `%APPDATA%\zhituan` 建起来了、内容却是半份——搬迁的条件是「新目录还没建起来」，
+ * 一旦它存在就**再也不重试**，用户下次真启动会以为配置全丢了。这不是推演：
+ * 2026-09-27 本机就被这么留下过一个只有 4 个条目的 `zhituan`（详见
+ * docs/spike-findings.md 的 Q68）。因此 appData 也必须指到临时目录里去。
+ */
+app.setPath('appData', TEMP)
 app.setPath('userData', TEMP)
 
 mark('require 真主进程')
@@ -142,6 +178,33 @@ const landed = path.resolve(app.getPath('userData'))
 if (landed !== path.resolve(TEMP)) {
   console.error(`[FAIL] userData 没落到临时目录（落在 ${landed}），就此退出，绝不动用户那份`)
   app.exit(1)
+}
+
+/**
+ * 收走自己建的那份临时 userData。
+ *
+ * Chromium 在里面开着缓存与锁文件，删不干净是常事，因此只尽力而为、失败不报错——
+ * 剩下的那点东西在系统的 %TEMP% 里，比留一个「跑一趟多一份」的无底洞强。
+ *
+ * 这一步是补上的：先前探针从不清理，而 `app.exit()` **不走 `will-quit`**，
+ * 于是每跑一趟就多留一份（2026-09-27 本机一天攒下 6 份、约 350MB）。
+ */
+const 收走临时目录 = () => {
+  /*
+   * 尽力而为。**Windows 上多半删不掉**——进程还活着时那一堆 Cache 文件动不了，
+   * 而收尾动作不能因为删不干净就把探针弄挂。留下来的那份由**下一次跑动**开头
+   * 那个 makeTempUserData 清掉（见 probe-temp.cjs 的文件头：为什么不是「退出时
+   * 自己删」而是「下次开工前清旧的」）。
+   */
+  removeTemp(TEMP)
+}
+
+// 被 `timeout` 收走时走这一条（Windows 上不一定送得到，因此正常退出那条更要紧）
+for (const 信号 of ['SIGTERM', 'SIGINT']) {
+  process.on(信号, () => {
+    收走临时目录()
+    app.exit(0)
+  })
 }
 
 const watchdog = setTimeout(() => {
@@ -374,8 +437,8 @@ async function main() {
     const state = JSON.parse(
       await home.webContents.executeJavaScript(`JSON.stringify({
         加载到: document.readyState,
-        桥: typeof window.moyu,
-        桥上的键: window.moyu ? Object.keys(window.moyu).sort() : [],
+        桥: typeof window.zhituan,
+        桥上的键: window.zhituan ? Object.keys(window.zhituan).sort() : [],
         栏目: [...document.querySelectorAll('.plates .plate')].map((e) => e.dataset.plate),
         行数: document.querySelectorAll('.lines .line').length,
         当前栏: document.querySelector('.plate.on')?.dataset.plate ?? null,
@@ -384,7 +447,7 @@ async function main() {
       })`)
     )
     const ok = state.桥 === 'object' && state.加载到 === 'complete'
-    record('A2', '起始页在真桥上活着吗（拿得到 window.moyu、行是按真数据算出来的吗）', ok ? '是' : '不是', state)
+    record('A2', '起始页在真桥上活着吗（拿得到 window.zhituan、行是按真数据算出来的吗）', ok ? '是' : '不是', state)
   }
 
   // ------------------------------------------------------------ A3 点栏目换不换栏
@@ -421,7 +484,7 @@ async function main() {
     const after = wcModule.getAllWebContents().length
     const tabs = JSON.parse(
       await chrome.webContents.executeJavaScript(
-        `window.moyu.tabs.list().then((s) => JSON.stringify(s.tabs.map((t) => t.url)))`
+        `window.zhituan.tabs.list().then((s) => JSON.stringify(s.tabs.map((t) => t.url)))`
       )
     )
     record('A4', '在真身上点第一行，开出一张新标签页了吗', after > before ? '是' : '不是', {
@@ -436,19 +499,19 @@ async function main() {
 
   mark('A5 收起成球再展开')
   {
-    await chrome.webContents.executeJavaScript(`window.moyu.win.collapse()`)
+    await chrome.webContents.executeJavaScript(`window.zhituan.win.collapse()`)
     await delay(600)
     const collapsed = JSON.parse(
       await chrome.webContents.executeJavaScript(
-        `window.moyu.win.getState().then((s) => JSON.stringify({ mode: s.mode }))`
+        `window.zhituan.win.getState().then((s) => JSON.stringify({ mode: s.mode }))`
       )
     )
     const gone = win.contentView.children.filter((v) => vis(v) === true && v !== chrome).length
-    await chrome.webContents.executeJavaScript(`window.moyu.win.expand()`)
+    await chrome.webContents.executeJavaScript(`window.zhituan.win.expand()`)
     await delay(800)
     const back = JSON.parse(
       await chrome.webContents.executeJavaScript(
-        `window.moyu.win.getState().then((s) => JSON.stringify({ mode: s.mode }))`
+        `window.zhituan.win.getState().then((s) => JSON.stringify({ mode: s.mode }))`
       )
     )
     invariant('A5', '收起成球再展开之后，正文区那一点还归网页吗', 'page', {
@@ -462,17 +525,17 @@ async function main() {
 
   mark('A6 最大化')
   {
-    await chrome.webContents.executeJavaScript(`window.moyu.win.maximize()`)
+    await chrome.webContents.executeJavaScript(`window.zhituan.win.maximize()`)
     await delay(800)
     invariant('A6', '最大化之后，正文区那一点归网页吗（界面层这时只占右上角一小块）', 'page', {
       最大化: JSON.parse(
         await chrome.webContents.executeJavaScript(
-          `window.moyu.win.getState().then((s) => JSON.stringify({ maximized: s.maximized }))`
+          `window.zhituan.win.getState().then((s) => JSON.stringify({ maximized: s.maximized }))`
         )
       )
     })
     mark('A7 从最大化还原')
-    await chrome.webContents.executeJavaScript(`window.moyu.win.restore()`)
+    await chrome.webContents.executeJavaScript(`window.zhituan.win.restore()`)
     await delay(800)
     invariant('A7', '从最大化还原之后，正文区那一点归网页吗', 'page')
   }
@@ -481,7 +544,7 @@ async function main() {
 
   mark('A8 回起始页再点一栏')
   {
-    await chrome.webContents.executeJavaScript(`window.moyu.ui.openHome()`)
+    await chrome.webContents.executeJavaScript(`window.zhituan.ui.openHome()`)
     await delay(700)
     const at = await centerOf(home.webContents, '.plates .plate[data-plate="reading"]')
     await press(home.webContents, at.x, at.y)
@@ -532,8 +595,8 @@ async function main() {
     const 主进程这边 = async () =>
       JSON.parse(
         await chrome.webContents.executeJavaScript(`(async () => {
-          const cfg = await window.moyu.config.get()
-          const st = await window.moyu.win.getState()
+          const cfg = await window.zhituan.config.get()
+          const st = await window.zhituan.win.getState()
           return JSON.stringify({ 配置: cfg.window.opacity, 窗口: st.opacity })
         })()`)
       )
@@ -622,13 +685,13 @@ async function main() {
   mark('A11 不碰界面，直接调 win.setOpacity')
   {
     const 目标 = 0.55
-    await chrome.webContents.executeJavaScript(`window.moyu.win.setOpacity({ value: ${目标} })`)
+    await chrome.webContents.executeJavaScript(`window.zhituan.win.setOpacity({ value: ${目标} })`)
     await delay(700)
     const 状态 = JSON.parse(
       await chrome.webContents.executeJavaScript(`(async () => {
         const box = [...document.querySelectorAll('.rail .opacity')]
           .find((e) => e.querySelector('.label')?.textContent?.trim() === '整体')
-        const cfg = await window.moyu.config.get()
+        const cfg = await window.zhituan.config.get()
         return JSON.stringify({
           显示: box?.querySelector('.value')?.textContent?.trim() ?? null,
           值: box ? Number(box.querySelector('.slider').value) : null,
@@ -664,7 +727,7 @@ async function main() {
     const 书 = path.join(TEMP, '摸鱼样本（探针）.txt')
     fs.writeFileSync(
       书,
-      '摸鱼阅读\n\n' + '这是一行用来量透明度的字，写得长一点好占满一整行。\n'.repeat(24),
+      '纸团\n\n' + '这是一行用来量透明度的字，写得长一点好占满一整行。\n'.repeat(24),
       'utf8'
     )
     const 地址 = pathToFileURL(书).href
@@ -694,7 +757,7 @@ async function main() {
     const 停在网页上 = await 读滑块()
 
     await chrome.webContents.executeJavaScript(
-      `window.moyu.tabs.create({ url: ${JSON.stringify(地址)}, activate: true })`
+      `window.zhituan.tabs.create({ url: ${JSON.stringify(地址)}, activate: true })`
     )
     await delay(1500)
 
@@ -803,7 +866,7 @@ async function main() {
     const 淡之后样式 = await 读样式()
     const 配置里 = JSON.parse(
       await chrome.webContents.executeJavaScript(`(async () => {
-        const cfg = await window.moyu.config.get()
+        const cfg = await window.zhituan.config.get()
         return JSON.stringify({ 阅读: cfg.ui.readerOpacity })
       })()`)
     )
@@ -834,7 +897,7 @@ async function main() {
       await chrome.webContents.executeJavaScript(`(async () => {
         const box = [...document.querySelectorAll('.rail .opacity')]
           .find((e) => e.querySelector('.label')?.textContent?.trim() === '阅读')
-        const cfg = await window.moyu.config.get()
+        const cfg = await window.zhituan.config.get()
         return JSON.stringify({
           显示: box?.querySelector('.value')?.textContent?.trim() ?? null,
           配置: cfg.ui.readerOpacity,
@@ -894,6 +957,153 @@ async function main() {
     })
   }
 
+  // ------------------------------------------------------------ A13 开一本 EPUB
+  //
+  // A12 走的是 TXT（Chromium 自己渲染那一屏）。这一问走 EPUB，也就是**自家书页**
+  // 那一路——而它要问的第一件事不是「书排版好不好看」，是**那条接线接没接上**。
+  //
+  // 起因是一处漏判：`kind` 判成 'book' 只是第一步，真正决定「读得起来读不起来」
+  // 的是 create() 有没有把 viewUrl 换成自家书页（与 pdf 那条并列的一条分支）。
+  // 少了那一条，视图里加载的仍是那个 `.epub` 文件本身，而 Chromium 对这种格式
+  // 只会把它变成一次下载（Q63 量过：`will-download` 到场、loadURL 以 ERR_FAILED 收场）。
+  // 症状与「这本 EPUB 是坏的」一模一样，因此**必须按地址逐字认这一屏**，
+  // 不能只看「有没有开出一张新标签页」。
+  //
+  // 后面四条是接着问「接上之后活没活」：正文有没有画出来（要从 Shadow DOM 里读）、
+  // 书的 `body { margin-top: 48px }` 命不命中（Q65 那条实测的现场复核）、
+  // 书的底色有没有被我们收掉（纸归我们画的前提）、以及目录点得动不动。
+  mark('A13 打开一本 EPUB')
+  {
+    const 书 = path.join(TEMP, '探针写的书（EPUB）.epub')
+    // 书由 zip-store.cjs 现造（两章、带 48px 上边距与一张白底，理由见那个文件头）
+    fs.writeFileSync(书, probeBook(), 'binary')
+    const 地址 = pathToFileURL(书).href
+
+    await chrome.webContents.executeJavaScript(
+      `window.zhituan.tabs.create({ url: ${JSON.stringify(地址)}, activate: true })`
+    )
+    // 拆包 + 解析 OPF + 取第一章 + 注入，全在页面这一侧
+    await delay(900)
+
+    /*
+     * 按地址逐字认这一屏。两条都要看：
+     *   · 书页在不在（book.html?doc=…）；
+     *   · 有没有一屏加载的正是那个 `.epub` —— 那正是「少了 viewUrl 那一条」的症状。
+     * 只判前者是不够的：万一两个都在（多开了一屏），那也是错的。
+     */
+    const 书页 = win.contentView.children.find((v) => fileOf(v.webContents.getURL()) === 'book.html')
+    const 掉了下去 = win.contentView.children.find((v) => v.webContents.getURL() === 地址)
+
+    /** 从书页上读：正文、读数、书的底、以及书自己的那 48px */
+    const 读 = async () => {
+      if (!书页) return null
+      return JSON.parse(
+        await 书页.webContents.executeJavaScript(`(() => {
+          const sheet = document.querySelector('.sheet')
+          const root = sheet ? sheet.shadowRoot : null
+          const body = root ? root.querySelector('body') : null
+          const css = body ? getComputedStyle(body) : null
+          return JSON.stringify({
+            读数: document.querySelector('.hud__count')?.textContent?.trim() ?? null,
+            正文: body ? (body.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 50) : null,
+            份数: root ? root.querySelectorAll('body').length : 0,
+            书的底色: css ? css.backgroundColor : null,
+            书的上边距: css ? css.marginTop : null,
+            书的样式表: root ? root.querySelectorAll('link[rel=stylesheet]').length : 0,
+            写在屏幕上的一句话: document.querySelector('.note')?.textContent?.trim() ?? null
+          })
+        })()`)
+      )
+    }
+
+    /*
+     * 先把读数**按时间走一遍**，再问别的。
+     *
+     * 这一串是给「读数怎么会是 2/2」这类问题用的：只看最终值分不清它是**一开始就
+     * 在第二章**（装书那一步的问题），还是**读着读着被谁翻过去了**（谁在给这一页
+     * 送事件）。两者的修法完全不同，而它们的终值一模一样。
+     */
+    const 轨迹 = []
+    for (let i = 0; i < 10; i++) {
+      const r = await 读()
+      轨迹.push({ 第几次: i + 1, 读数: r?.读数 ?? null })
+      if (r?.写在屏幕上的一句话) break
+      await delay(300)
+    }
+    const 一 = await 读()
+
+    // 点「目录」，再点「第二章」——目录是书里给的，不是按章次编的
+    //
+    // 按**文字**找那颗键，不按位置：HUD 里现在有两颗（「Aa」与「目录」），而这个
+    // 位置本来就会随着新控件变——照 `.hud__key` 取第一颗，加一颗键就会点到别处，
+    // 症状看起来像「目录没做出来」（2026-09-27 真的这么红过一次）。
+    const 目录 = JSON.parse(
+      await 书页.webContents.executeJavaScript(`(() => {
+        const key = [...document.querySelectorAll('.hud__key')].find(
+          (b) => b.textContent.trim() === '目录'
+        )
+        if (!key) return '"没有那颗「目录」键"'
+        key.click()
+        return '"点了那颗「目录」键"'
+      })()`)
+    )
+    await delay(500)
+    const 目录项 = JSON.parse(
+      await 书页.webContents.executeJavaScript(
+        `JSON.stringify({
+          开着: !!document.querySelector('.toc'),
+          项: [...document.querySelectorAll('.toc__item')].map((e) => e.textContent.trim())
+        })`
+      )
+    )
+    const 点第二章 = JSON.parse(
+      await 书页.webContents.executeJavaScript(`(() => {
+        const hit = [...document.querySelectorAll('.toc__item')].find((e) => e.textContent.trim() === '第二章')
+        if (!hit) return '"没有第二章"'
+        hit.click()
+        return '"点了"'
+      })()`)
+    )
+    await delay(1600)
+    const 二 = await 读()
+
+    const ok =
+      书页 !== undefined &&
+      掉了下去 === undefined &&
+      一 !== null &&
+      一.读数 === '第一章 · 1/2' &&
+      一.正文.includes('探针写的第一章') &&
+      一.份数 === 1 &&
+      一.书的底色 === 'rgba(0, 0, 0, 0)' && // CLEAR 生效：书那张纸被我们收掉了
+      一.书的上边距 === '48px' && // 书的 body{} 规则照样命中 Shadow DOM 里的正文
+      一.书的样式表 === 1 &&
+      目录项.项.length === 2 &&
+      点第二章 === '点了' &&
+      二 !== null &&
+      二.读数 === '第二章 · 2/2' &&
+      二.正文.includes('第二章')
+
+    record(
+      'A13',
+      '开一本 EPUB：视图里加载的是自家书页吗（而不是那个 .epub 本身）；正文画出来了吗、目录点得动吗',
+      ok ? '是' : '不是',
+      {
+        书的地址: 地址,
+        加载的地址: 书页 ? String(书页.webContents.getURL()).slice(0, 90) : '(没有这一屏)',
+        有没有哪一屏加载的正是那个epub: 掉了下去 ? String(掉了下去.webContents.getURL()).slice(0, 60) : '没有',
+        场上画着的屏: win.contentView.children
+          .filter((v) => vis(v) === true && v !== chrome)
+          .map(nameOf),
+        轨迹,
+        第一章: 一,
+        点目录: 目录,
+        目录项,
+        点第二章: 点第二章,
+        第二章: 二
+      }
+    )
+  }
+
   // ------------------------------------------------------------ 收尾
 
   mark('收尾，写文件')
@@ -925,5 +1135,6 @@ async function main() {
   for (const b of bad) console.log(`  破了 ${b.id}：${b.question}`)
   clearInterval(beat)
   clearTimeout(watchdog)
+  收走临时目录()
   app.exit(0)
 }

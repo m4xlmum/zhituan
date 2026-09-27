@@ -186,6 +186,37 @@ export const BACKGROUND_OPACITY_MAX = 1
 export const READER_OPACITY_MIN = 0
 export const READER_OPACITY_MAX = 1
 
+/**
+ * 阅读排版三项的范围（只作用于本机 EPUB 那一页，见 UiConfig.readerFontSize）。
+ *
+ * 字号给的是 **px** 而不是比例：书的 CSS 里 `font-size` 有 em、%、pt 各种写法，
+ * 按比例去乘会得到一个「乘不出确定值」的结果；而这一页的正文归我们排，
+ * 给一个绝对值最清楚。上下限取的是「还能读」的两头：14px 是手机上正文的地板，
+ * 26px 已经比大多数书的标题还大。
+ *
+ * 行距是**无单位倍数**（`line-height: 1.85` 这种写法），于是它随字号一起缩放
+ * ——这正是无单位行距的意义，也是我们写进样式表的形式。
+ *
+ * 留白是左右两边的百分比（相对正文区宽度）：用百分比而不是 px，换个窗口宽度
+ * 读到的还是同一份版心。
+ */
+export const READER_FONT_MIN = 14
+export const READER_FONT_MAX = 26
+export const READER_LINE_MIN = 1.4
+export const READER_LINE_MAX = 2.4
+export const READER_MARGIN_MIN = 0
+export const READER_MARGIN_MAX = 14
+
+/**
+ * 三项的默认值。
+ *
+ * 刻意与书页里原先写死的那组排版逐字相同（`17px` / `1.85` / `6%`）：
+ * 这一版把写死的值搬进配置，用户看到的版面一个像素都不该变。
+ */
+export const DEFAULT_READER_FONT = 17
+export const DEFAULT_READER_LINE = 1.85
+export const DEFAULT_READER_MARGIN = 6
+
 /** 窗口尺寸预设（DIP）。四个都严格 16:9，换尺寸不会让版面在两个方向上各自重排 */
 export const SIZE_PRESETS = {
   mini: { width: 480, height: 270 },
@@ -256,7 +287,7 @@ export const DEFAULT_NEW_TAB_URL = 'https://www.google.com'
  * 不是标签页。这个伪地址只用来对外说清「显示的是哪一屏」——
  * 真实的 file:// 路径既不显示，也不该显示。
  */
-export const HOME_URL = 'moyu://home'
+export const HOME_URL = 'zhituan://home'
 export const HOME_TITLE = '起始页'
 
 /**
@@ -266,7 +297,7 @@ export const HOME_TITLE = '起始页'
  * 那扇窗口会出现在任务栏与 Alt+Tab 里，等于把「我在摸鱼」写在脸上。
  * 与首页一样不进标签条：入口是顶栏最左那颗「起始页」右边紧挨着的那颗键。
  */
-export const SETTINGS_URL = 'moyu://settings'
+export const SETTINGS_URL = 'zhituan://settings'
 export const SETTINGS_TITLE = '系统设置'
 
 /**
@@ -478,7 +509,7 @@ export const PERSIST_DEBOUNCE_MS = 300
  * electron-builder 从 git remote 推出来的，一旦打包机器上的 remote 变了，
  * 它就悄悄变——而这份地址是产品事实，不该随构建环境漂。
  */
-export const UPDATE_FEED_BASE = 'https://github.com/m4xlmum/moyu-reader'
+export const UPDATE_FEED_BASE = 'https://github.com/m4xlmum/zhituan'
 
 /**
  * 启动后多久才去查（毫秒）。

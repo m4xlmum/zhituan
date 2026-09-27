@@ -139,14 +139,14 @@ const title = computed(
 
 .label,
 .value {
-  color: var(--moyu-text-dim);
+  color: var(--zhituan-text-dim);
   font-size: 11px;
   line-height: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 .label {
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
 }
 
 .track-wrap {
@@ -198,8 +198,8 @@ const title = computed(
  */
 .slider::-webkit-slider-runnable-track {
   height: 14px;
-  border-radius: var(--moyu-radius-track);
-  background-image: linear-gradient(var(--moyu-border), var(--moyu-border));
+  border-radius: var(--zhituan-radius-track);
+  background-image: linear-gradient(var(--zhituan-border), var(--zhituan-border));
   background-size: 100% 3px;
   background-position: center;
   background-repeat: no-repeat;
@@ -211,12 +211,12 @@ const title = computed(
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--moyu-accent);
+  background: var(--zhituan-accent);
 }
 
 /* 键盘焦点必须看得见：滑块的默认轮廓已被去掉，这里补回来 */
 .slider:focus-visible {
-  outline: 2px solid var(--moyu-accent);
+  outline: 2px solid var(--zhituan-accent);
   outline-offset: 3px;
 }
 
@@ -227,7 +227,7 @@ const title = computed(
  * 换回一本本机文件，它就照这个值淡给你看。因此这里只改颜色，不动读数。
  */
 .opacity.off .value {
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
 }
 
 .opacity.off .slider {
@@ -235,6 +235,6 @@ const title = computed(
 }
 
 .opacity.off .slider::-webkit-slider-thumb {
-  background: var(--moyu-border);
+  background: var(--zhituan-border);
 }
 </style>

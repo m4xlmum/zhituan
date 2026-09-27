@@ -43,7 +43,7 @@ function record(id, question, verdict, detail) {
  * esbuild 本来就在依赖树里（vite 带进来的），给它一个 @shared 别名即可。
  */
 async function loadGeometry() {
-  const outfile = path.join(os.tmpdir(), `moyu-geometry-${process.pid}.cjs`)
+  const outfile = path.join(os.tmpdir(), `zhituan-geometry-${process.pid}.cjs`)
   await esbuild.build({
     entryPoints: [path.join(ROOT, 'src', 'main', 'services', 'geometry.ts')],
     bundle: true,
@@ -174,7 +174,7 @@ app.whenReady().then(async () => {
     skipTaskbar: true,
     hasShadow: false,
     backgroundColor: '#00000000',
-    title: 'moyu-resize-probe'
+    title: 'zhituan-resize-probe'
   })
 
   const applyCases = [

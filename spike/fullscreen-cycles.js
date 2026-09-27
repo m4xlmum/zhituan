@@ -52,7 +52,7 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms))
  * data: URL：data: 是不透明源，全屏放不放行是另一件与本题无关的事。
  */
 function writePage(tag) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `moyu-fscyc-${tag}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `zhituan-fscyc-${tag}-`))
   const file = path.join(dir, 'p.html')
   fs.writeFileSync(
     file,

@@ -56,7 +56,7 @@ const step = (what) => console.log(`  · ${what}`)
 
 /** 把要用的几份 TS 各打成一包再 require。理由与 media-pause.js 同：验真的，不验抄本 */
 async function buildModules() {
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-tray-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-tray-'))
   await esbuild.build({
     entryPoints: [
       path.join(ROOT, 'src', 'main', 'services', 'windowController.ts'),
@@ -93,7 +93,7 @@ app.whenReady().then(async () => {
   const { ConfigStore } = mods.configStore
   const { WindowRegistry } = mods.registry
 
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-tray-config-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-tray-config-'))
   const config = new ConfigStore(dir)
 
   const displays = screen.getAllDisplays()

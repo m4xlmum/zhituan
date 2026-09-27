@@ -52,7 +52,7 @@ function record(id, question, verdict, detail) {
  * 给它一个 @shared 别名、把 electron 留成外部依赖即可。
  */
 async function buildModules() {
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-max-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-max-'))
   await esbuild.build({
     entryPoints: [
       path.join(ROOT, 'src', 'main', 'services', 'windowController.ts'),
@@ -96,7 +96,7 @@ app.whenReady().then(async () => {
   const { SIZE_PRESETS, FLOAT_W, FLOAT_H, TOP_BAR_H, RAIL_W } = mods.constants
 
   // 配置写在临时目录：本探针会把尺寸写进它，绝不能写进用户真正的那一份
-  const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-max-config-'))
+  const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-max-config-'))
   const config = new ConfigStore(configDir)
 
   /** 所有显示器之外的一个落点，保证窗口永远不出现在屏幕上 */

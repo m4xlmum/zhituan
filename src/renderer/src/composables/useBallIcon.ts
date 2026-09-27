@@ -25,10 +25,10 @@ export function useBallIcon() {
      * 先订阅再取，不能反过来：反过来的话，「取」与「订阅」之间发生的那一次变更
      * 会丢——球从此停在旧图上，直到用户下次再动它一下。
      */
-    unsubscribe = window.moyu.ballIcon.onChanged((next) => {
+    unsubscribe = window.zhituan.ballIcon.onChanged((next) => {
       customSrc.value = next
     })
-    void window.moyu.ballIcon.get().then((next) => {
+    void window.zhituan.ballIcon.get().then((next) => {
       customSrc.value = next
     })
   })
@@ -72,7 +72,7 @@ export function useBallIcon() {
    * 自己传进去的那个当作新的现状——不然界面会显示一张根本没存下来的图。
    */
   async function setImage(dataUrl: string | null): Promise<void> {
-    customSrc.value = await window.moyu.ballIcon.set({ dataUrl })
+    customSrc.value = await window.zhituan.ballIcon.set({ dataUrl })
   }
 
   return { customSrc, choice, fit, custom, builtinIcon, setIcon, setFit, setImage }

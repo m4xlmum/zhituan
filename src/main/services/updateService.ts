@@ -69,7 +69,7 @@ import { log } from './logger'
 export interface UpdateManifest {
   version: string
   file: {
-    /** 资产文件名，比如 moyu-reader-1.0.0-x64.exe */
+    /** 资产文件名，比如 zhituan-1.0.0-x64.exe */
     url: string
     /** 文件的 sha512，base64 编码（electron-builder 写的就是 base64） */
     sha512: string

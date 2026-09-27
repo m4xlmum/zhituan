@@ -20,12 +20,30 @@
 #
 # 用法：bash spike/capture-readme.sh     （无头，不弹窗）
 set -u
+# ELECTRON_RUN_AS_NODE 会让 electron 二进制**退化成纯 Node**：脚本照样"跑完"，
+# 但 ipcMain 是 undefined，一张图都抓不到。本机的 WorkBuddy 宿主环境就带着它，
+# 当时八个探针全废、脚本却一路打印正常。这个脚本要的是真的 Electron，显式清掉。
+unset ELECTRON_RUN_AS_NODE
 cd "$(dirname "$0")/.." || exit 1
 OUT=spike/out/readme
 mkdir -p "$OUT"
-probe () { timeout 120 npx electron spike/preview.js "$@" --out "$OUT"; }
+# 无头渲染的额外开关。真机上留空即可；容器/沙箱里 GPU 进程会当场崩
+# （`FATAL: GPU process isn't usable. Goodbye.`），那时需要
+# `PROBE_FLAGS="--no-sandbox --in-process-gpu"` 这类开关才跑得起来。
+# 刻意不写死：写死会连渲染后端一起钉住，而这里的图是要跟真机一致的。
+PROBE_FLAGS="${PROBE_FLAGS:-}"
+probe () { timeout 120 npx electron $PROBE_FLAGS spike/preview.js "$@" --out "$OUT"; }
 FAILED=0
+# 这一轮的起跑线。源图必须比它新，才算"这次真的抓到了"——
+# cp 对着一张旧图也会成功，于是"复制成功"本身什么都不能说明。
+MARK="$OUT/.run-start"
+touch "$MARK"
 cp_ () {
+  if [ ! -f "$OUT/$1" ] || [ "$OUT/$1" -ot "$MARK" ]; then
+    printf '!! 源图没更新（这次没抓到）：%s\n' "$1" >&2
+    FAILED=$((FAILED + 1))
+    return
+  fi
   if cp "$OUT/$1" "$OUT/$2"; then
     printf '%-26s ← %s\n' "$2" "$1"
   else
@@ -69,8 +87,9 @@ ls -la "$OUT"/chrome.png "$OUT"/chrome-bg0.png "$OUT"/home-paper.png "$OUT"/home
        "$OUT"/home-crt-green.png "$OUT"/settings.png "$OUT"/popover.png "$OUT"/ball.png |
   awk '{print $5, $6, $7, $8, $9}'
 
+rm -f "$MARK"
 if [ "$FAILED" -ne 0 ]; then
-  echo "有 $FAILED 张没复制成——上面那些成品名里混着旧图，别拿去发 README。" >&2
+  echo "有 $FAILED 张没抓到或没复制成——上面那些成品名里混着旧图，别拿去发 README。" >&2
   exit 1
 fi
 echo "OK：8 张全部换成这一轮抓的原图。"

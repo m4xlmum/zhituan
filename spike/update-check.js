@@ -95,7 +95,7 @@ function skip(id, question, why) {
 
 /** 把要用的几份 TS 各打成一包再 require。理由与 tray-reveal.js 同：验真的，不验抄本 */
 async function buildModules() {
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-update-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-update-'))
   await esbuild.build({
     entryPoints: [
       path.join(ROOT, 'src', 'main', 'services', 'updateService.ts'),
@@ -124,7 +124,7 @@ async function buildModules() {
 
 // ---------------------------------------------------------------- 场子
 
-const assetName = (version) => `moyu-reader-${version}-x64.exe`
+const assetName = (version) => `zhituan-${version}-x64.exe`
 const sha512 = (buf) => crypto.createHash('sha512').update(buf).digest('base64')
 
 /** electron-builder 写出来的那一份形状，逐行照抄 */
@@ -176,7 +176,7 @@ const freePort = () =>
     })
   })
 
-const tmpDir = (kind) => fs.mkdtempSync(path.join(os.tmpdir(), `moyu-update-${kind}-`))
+const tmpDir = (kind) => fs.mkdtempSync(path.join(os.tmpdir(), `zhituan-update-${kind}-`))
 
 /**
  * 一个现场：一份临时配置、一个临时下载目录、一个 UpdateService。

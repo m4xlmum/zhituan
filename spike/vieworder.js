@@ -88,7 +88,7 @@ app.whenReady().then(async () => {
     skipTaskbar: true,
     hasShadow: false,
     backgroundColor: '#00000000',
-    title: 'moyu-vieworder-probe'
+    title: 'zhituan-vieworder-probe'
   })
 
   const chrome = await solidView('#ff0000')

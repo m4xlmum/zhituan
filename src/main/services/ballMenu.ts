@@ -53,7 +53,7 @@ export function popupBallMenu(deps: BallMenuDeps): void {
     { label: '藏进托盘', click: () => deps.hideToTray() },
     { label: '系统设置', click: () => deps.openSettings() },
     { type: 'separator' },
-    { label: '退出摸鱼阅读', click: () => deps.quit() }
+    { label: '退出纸团', click: () => deps.quit() }
   ])
 
   const win = deps.getWindow()

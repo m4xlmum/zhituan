@@ -6,7 +6,7 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-export type RendererPage = 'index' | 'home' | 'popover' | 'settings' | 'pdf'
+export type RendererPage = 'index' | 'home' | 'popover' | 'settings' | 'pdf' | 'book'
 
 export function rendererUrl(page: RendererPage): string {
   const devUrl = process.env['ELECTRON_RENDERER_URL']

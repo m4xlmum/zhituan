@@ -11,7 +11,7 @@ import { app, session, type Session } from 'electron'
 import { log } from './logger'
 
 /** 前缀 persist: 不可省略——少了它分区只存在于内存，退出即丢失登录态 */
-export const PARTITION = 'persist:moyu'
+export const PARTITION = 'persist:zhituan'
 
 /** 默认拒绝的权限，本应用没有理由需要它们 */
 const DENIED_PERMISSIONS = new Set([

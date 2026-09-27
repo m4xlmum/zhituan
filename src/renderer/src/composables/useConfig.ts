@@ -12,8 +12,8 @@ export function useConfig() {
   let unsubscribe: (() => void) | null = null
 
   onMounted(async () => {
-    config.value = await window.moyu.config.get()
-    unsubscribe = window.moyu.config.onChanged((next) => {
+    config.value = await window.zhituan.config.get()
+    unsubscribe = window.zhituan.config.onChanged((next) => {
       config.value = next
     })
   })
@@ -21,7 +21,7 @@ export function useConfig() {
   onUnmounted(() => unsubscribe?.())
 
   async function patch(input: ConfigPatch): Promise<void> {
-    config.value = await window.moyu.config.patch(input)
+    config.value = await window.zhituan.config.patch(input)
   }
 
   return { config, patch }

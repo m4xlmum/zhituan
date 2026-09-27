@@ -188,12 +188,12 @@ async function clearCustomIcon(): Promise<void> {
 let offConfig: (() => void) | null = null
 
 onMounted(async () => {
-  config.value = await window.moyu.config.get()
-  hotkeys.value = await window.moyu.hotkey.list()
+  config.value = await window.zhituan.config.get()
+  hotkeys.value = await window.zhituan.hotkey.list()
   // 起始页也能换主题，那一边改完只有这条广播会通知到这里；
   // 这一页自己改主题时也是同一条路——配置一变，五份文档一起重画。
   // 本页自己发的 patch 也会回广播一次，值相同，不冲突。
-  offConfig = window.moyu.config.onChanged((next) => {
+  offConfig = window.zhituan.config.onChanged((next) => {
     config.value = next
   })
 })
@@ -203,11 +203,11 @@ onUnmounted(() => {
 })
 
 async function patch(input: ConfigPatch): Promise<void> {
-  config.value = await window.moyu.config.patch(input)
+  config.value = await window.zhituan.config.patch(input)
 }
 
 async function reloadHotkeys(): Promise<void> {
-  hotkeys.value = await window.moyu.hotkey.list()
+  hotkeys.value = await window.zhituan.hotkey.list()
 }
 
 /** 把键盘事件转成 Electron 的 accelerator 字符串 */
@@ -236,7 +236,7 @@ async function captureHotkey(
     return
   }
 
-  const result = await window.moyu.hotkey.set({ which, accelerator })
+  const result = await window.zhituan.hotkey.set({ which, accelerator })
   hotkeyMessage.value = result.ok
     ? `已改为 ${result.accelerator}`
     : `注册失败：${result.reason ?? '未知原因'}`
@@ -249,20 +249,20 @@ function startCapture(which: 'bossMinimize' | 'bossHideToTray'): void {
 }
 
 async function clearHistory(): Promise<void> {
-  await window.moyu.history.clear()
+  await window.zhituan.history.clear()
   hotkeyMessage.value = '历史记录已清空'
 }
 
 // 模板里的 window 指向组件实例而非全局对象，因此全局调用都要包一层方法
 function setSizePreset(preset: SizePreset): void {
-  void window.moyu.win.setSize({ preset })
+  void window.zhituan.win.setSize({ preset })
 }
 </script>
 
 <template>
   <div class="layout">
     <nav class="sidebar">
-      <div class="brand">摸鱼阅读</div>
+      <div class="brand">纸团</div>
       <button
         v-for="s in SECTIONS"
         :key="s.key"
@@ -688,7 +688,7 @@ function setSizePreset(preset: SizePreset): void {
         <h2>数据</h2>
         <div class="card">
           <p class="hint">
-            配置、站点、书签与历史保存在 <code>%APPDATA%\moyu-reader</code>。
+            配置、站点、书签与历史保存在 <code>%APPDATA%\zhituan</code>。
             网页登录态由 Chromium 自行管理，位于同一目录下。
           </p>
           <div class="field">
@@ -704,7 +704,7 @@ function setSizePreset(preset: SizePreset): void {
       <section v-if="active === 'about'">
         <h2>关于</h2>
         <div class="card">
-          <p><b>摸鱼阅读</b> · 版本 {{ APP_VERSION }}</p>
+          <p><b>纸团</b> · 版本 {{ APP_VERSION }}</p>
 
           <div class="field">
             <label>更新</label>
@@ -765,8 +765,8 @@ function setSizePreset(preset: SizePreset): void {
             不包含任何来自该产品的资源或代码。
           </p>
           <p class="hint">
-            <a href="https://github.com/m4xlmum/moyu-reader" target="_blank" rel="noreferrer">
-              github.com/m4xlmum/moyu-reader
+            <a href="https://github.com/m4xlmum/zhituan" target="_blank" rel="noreferrer">
+              github.com/m4xlmum/zhituan
             </a>
           </p>
         </div>
@@ -792,15 +792,15 @@ function setSizePreset(preset: SizePreset): void {
   display: flex;
   height: 100%;
   /* 底板画在这里，而不是只画在 html/body 上：见样式表开头的说明 */
-  background: var(--moyu-ground);
+  background: var(--zhituan-ground);
 }
 
 .sidebar {
   flex: 0 0 160px;
   padding: 14px 10px;
   /* 凹面，不是卡面：它在浅色下比页底深、在深色下比页底暗，见 themes.css */
-  background: var(--moyu-sunken);
-  border-right: 1px solid var(--moyu-hairline);
+  background: var(--zhituan-sunken);
+  border-right: 1px solid var(--zhituan-hairline);
 }
 
 .brand {
@@ -814,19 +814,19 @@ function setSizePreset(preset: SizePreset): void {
   padding: 7px 10px;
   margin-bottom: 2px;
   border: none;
-  border-radius: var(--moyu-radius);
+  border-radius: var(--zhituan-radius);
   background: none;
-  color: var(--moyu-text-dim);
+  color: var(--zhituan-text-dim);
   text-align: left;
 }
 
 .nav-item:hover {
-  background: var(--moyu-sunken-hover);
+  background: var(--zhituan-sunken-hover);
 }
 
 .nav-item.active {
-  background: var(--moyu-surface);
-  color: var(--moyu-accent);
+  background: var(--zhituan-surface);
+  color: var(--zhituan-accent);
   font-weight: 600;
 }
 
@@ -844,9 +844,9 @@ h2 {
 .card {
   padding: 14px 16px;
   margin-bottom: 14px;
-  background: var(--moyu-surface);
-  border: 1px solid var(--moyu-hairline);
-  border-radius: var(--moyu-radius-tag);
+  background: var(--zhituan-surface);
+  border: 1px solid var(--zhituan-hairline);
+  border-radius: var(--zhituan-radius-tag);
 }
 
 .field {
@@ -859,7 +859,7 @@ h2 {
 .field > label {
   flex: 0 0 150px;
   padding-top: 2px;
-  color: var(--moyu-text-dim);
+  color: var(--zhituan-text-dim);
 }
 
 .control {
@@ -884,23 +884,23 @@ h2 {
 
 .control button {
   padding: 4px 12px;
-  border: 1px solid var(--moyu-hairline);
-  border-radius: var(--moyu-radius);
-  background: var(--moyu-surface);
+  border: 1px solid var(--zhituan-hairline);
+  border-radius: var(--zhituan-radius);
+  background: var(--zhituan-surface);
 }
 
 .control button:hover {
-  border-color: var(--moyu-accent);
-  color: var(--moyu-accent);
+  border-color: var(--zhituan-accent);
+  color: var(--zhituan-accent);
 }
 
 .control button.danger {
-  color: var(--moyu-danger);
+  color: var(--zhituan-danger);
 }
 
 .control button.danger:hover {
-  border-color: var(--moyu-danger);
-  background: var(--moyu-danger-soft);
+  border-color: var(--zhituan-danger);
+  background: var(--zhituan-danger-soft);
 }
 
 .themes {
@@ -912,14 +912,14 @@ h2 {
 /*
  * 选中那一格的面：一张专门给「上面要压字」用的淡强调底。
  *
- * 它比顶栏高亮按钮用的 --moyu-accent-soft 浅一档，理由见 themes.css：
+ * 它比顶栏高亮按钮用的 --zhituan-accent-soft 浅一档，理由见 themes.css：
  * 那张面上是图标，这一张面上是正文，同样的强调色字在 10% 的底上差 0.01 到不了 4.5。
  * 值本身与它一直以来的字面量 #eef4fd 相同——纸白下的观感一个像素都没变。
  */
 .control button.on {
-  border-color: var(--moyu-accent);
-  background: var(--moyu-selected);
-  color: var(--moyu-accent);
+  border-color: var(--zhituan-accent);
+  background: var(--zhituan-selected);
+  color: var(--zhituan-accent);
   font-weight: 600;
 }
 
@@ -943,7 +943,7 @@ h2 {
     padding: 8px 10px;
     overflow-x: auto;
     border-right: none;
-    border-bottom: 1px solid var(--moyu-hairline);
+    border-bottom: 1px solid var(--zhituan-hairline);
   }
 
   .brand {
@@ -979,41 +979,41 @@ h2 {
 .url {
   width: 260px;
   padding: 4px 10px;
-  border: 1px solid var(--moyu-hairline);
-  border-radius: var(--moyu-radius);
-  background: var(--moyu-surface);
+  border: 1px solid var(--zhituan-hairline);
+  border-radius: var(--zhituan-radius);
+  background: var(--zhituan-surface);
   outline: none;
 }
 
 .url:focus {
-  border-color: var(--moyu-accent);
+  border-color: var(--zhituan-accent);
 }
 
 .capture {
   width: 100%;
   margin-top: 8px;
   padding: 6px 10px;
-  border: 1px solid var(--moyu-accent);
-  border-radius: var(--moyu-radius);
+  border: 1px solid var(--zhituan-accent);
+  border-radius: var(--zhituan-radius);
   outline: none;
 }
 
 .value {
   min-width: 40px;
-  color: var(--moyu-text-dim);
+  color: var(--zhituan-text-dim);
 }
 
 .dim {
-  color: var(--moyu-text-dim);
+  color: var(--zhituan-text-dim);
 }
 
 .warn {
-  color: var(--moyu-danger);
+  color: var(--zhituan-danger);
 }
 
 .hint {
   margin: 6px 0 0;
-  color: var(--moyu-text-dim);
+  color: var(--zhituan-text-dim);
   line-height: 1.6;
 }
 
@@ -1043,15 +1043,15 @@ h2 {
   overflow: hidden;
   /* 球是圆的这件事不跟着形态变方，见 themes.css 末尾那一段 */
   border-radius: 50%;
-  border: 1px solid var(--moyu-hairline);
-  background: var(--moyu-surface);
-  color: var(--moyu-text-dim);
+  border: 1px solid var(--zhituan-hairline);
+  background: var(--zhituan-surface);
+  color: var(--zhituan-text-dim);
 }
 
 .ball-icons .ball-chip.on {
   border-color: transparent;
-  background: var(--moyu-accent);
-  color: var(--moyu-on-fill);
+  background: var(--zhituan-accent);
+  color: var(--zhituan-on-fill);
 }
 
 .ball-face {
@@ -1077,8 +1077,8 @@ h2 {
 
 code {
   padding: 1px 5px;
-  background: var(--moyu-sunken);
-  border-radius: var(--moyu-radius-sm);
+  background: var(--zhituan-sunken);
+  border-radius: var(--zhituan-radius-sm);
   font-family: Consolas, monospace;
 }
 </style>

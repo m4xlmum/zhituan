@@ -3,9 +3,9 @@
  *
  * 这里**不再有颜色**：颜色全部来自 styles/themes.css，按 html[data-theme] 挑。
  * 留下的是这层拼接——把主题给的三通道与「界面底板透明度」合成一个面。
- * 之所以非要有这一层：`--moyu-alpha` 是运行时写在文档根上的，
+ * 之所以非要有这一层：`--zhituan-alpha` 是运行时写在文档根上的，
  * 而自定义属性在**声明它的那个元素上**就把 var() 替换定了，所以
- * `rgb(<三通道> / var(--moyu-alpha))` 只能写在同一层、同一条规则里。
+ * `rgb(<三通道> / var(--zhituan-alpha))` 只能写在同一层、同一条规则里。
  *
  * 注意：不做毛玻璃。backdrop-filter 无法模糊透明窗口背后的桌面
  * （它只能模糊窗口自身的内容），在这里效果是错的。
@@ -27,17 +27,17 @@
    * 仍然看得见、点得到，不会把自己锁在外面（不像整扇窗的透明度，
    * 拉到 0 连字都没了，所以那个下限必须锁在 5%）。
    */
-  --moyu-alpha: 1;
+  --zhituan-alpha: 1;
 
   /*
-   * 面。三通道由主题给（themes.css 的 --moyu-*-rgb），alpha 由这里给，
+   * 面。三通道由主题给（themes.css 的 --zhituan-*-rgb），alpha 由这里给，
    * 于是同一个颜色既能被换主题、又能被一条滑块整体调淡。
    */
-  --moyu-surface: rgb(var(--moyu-surface-rgb) / var(--moyu-alpha));
-  --moyu-surface-hover: rgb(var(--moyu-surface-hover-rgb) / var(--moyu-alpha));
-  --moyu-surface-active: rgb(var(--moyu-surface-active-rgb) / var(--moyu-alpha));
+  --zhituan-surface: rgb(var(--zhituan-surface-rgb) / var(--zhituan-alpha));
+  --zhituan-surface-hover: rgb(var(--zhituan-surface-hover-rgb) / var(--zhituan-alpha));
+  --zhituan-surface-active: rgb(var(--zhituan-surface-active-rgb) / var(--zhituan-alpha));
 
   /* 线。分隔线也是画在底板上的，底板淡了它不淡就会剩下几条浮空的线 */
-  --moyu-border: rgb(var(--moyu-border-rgb) / var(--moyu-alpha));
-  --moyu-hairline: rgb(var(--moyu-hairline-rgb) / var(--moyu-alpha));
+  --zhituan-border: rgb(var(--zhituan-border-rgb) / var(--zhituan-alpha));
+  --zhituan-hairline: rgb(var(--zhituan-hairline-rgb) / var(--zhituan-alpha));
 }

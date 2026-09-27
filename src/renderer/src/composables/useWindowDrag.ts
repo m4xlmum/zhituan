@@ -56,7 +56,7 @@ export function useWindowDrag(onTap?: () => void) {
     } catch {
       // 见上
     }
-    window.moyu.win.dragStart()
+    window.zhituan.win.dragStart()
   }
 
   function end(event: PointerEvent | null): void {
@@ -64,7 +64,7 @@ export function useWindowDrag(onTap?: () => void) {
     dragging.value = false
     const start = pressAt
     pressAt = null
-    window.moyu.win.dragEnd()
+    window.zhituan.win.dragEnd()
     if (!event || !start) return
 
     const moved = Math.hypot(event.screenX - start.x, event.screenY - start.y)

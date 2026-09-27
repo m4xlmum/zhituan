@@ -48,7 +48,7 @@ const FAVICON =
  *
  * **只有网页**：起始页与系统设置不进这一条（它们是「屏」不是「标签」，
  * 见 spike/own-screens.js 与 README 里那一版模型）。这里要是还留着
- * `moyu://home` 那一格，预览里就会量出一个真实程序画不出来的标签条。
+ * `zhituan://home` 那一格，预览里就会量出一个真实程序画不出来的标签条。
  *
  * 给其中一个配一枚 favicon：标签条上确实是「有图标画图标、没有画个点」，
  * 两条路都得看得见。其余留空——「还没有图标」本身也是线上最常见的状态。
@@ -65,7 +65,7 @@ const ALL_TABS = [
   ['掘金 - 代码不止，掘金不停', 'https://juejin.cn/'],
   ['知乎 - 有问题，就会有答案', 'https://www.zhihu.com/'],
   ['哔哩哔哩 (゜-゜)つロ 干杯~-bilibili', 'https://www.bilibili.com/'],
-  ['GitHub - m4xlmum/moyu-reader', 'https://github.com/m4xlmum/moyu-reader']
+  ['GitHub - m4xlmum/zhituan', 'https://github.com/m4xlmum/zhituan']
 ].map(([title, url], i) => ({
   id: `t${i}`,
   url,
@@ -238,7 +238,7 @@ const LOCAL_HISTORY = [
 const HISTORY = [
   ['如何在 Electron 里做无边框透明窗口', 'https://www.zhihu.com/question/123456789', 9],
   ['CSS 扫描线与文字发光效果', 'https://juejin.cn/post/7123456789', 6],
-  ['摸鱼阅读 · 项目主页', 'https://github.com/m4xlmum/moyu-reader', 4],
+  ['纸团 · 项目主页', 'https://github.com/m4xlmum/zhituan', 4],
   ['Claude Code 官方文档', 'https://docs.claude.com/en/docs/claude-code', 3]
 ].map(([title, url, visitCount], i) => ({
   id: `h${i}`,
@@ -551,7 +551,7 @@ function openLocalFiles() {
   return Promise.resolve(names)
 }
 
-contextBridge.exposeInMainWorld('moyu', {
+contextBridge.exposeInMainWorld('zhituan', {
   config: {
     get: () => Promise.resolve(config),
     patch: patchConfig,

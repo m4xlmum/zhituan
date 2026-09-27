@@ -7,7 +7,7 @@
  * 会在某些 Windows 版本上失效，而透明是这个程序的全部。
  *
  * 尺寸取自 @shared/constants（边 4px、角 8×8）——它们由 ChromeApp 下发到
- * CSS 变量上（--moyu-resize-edge / --moyu-resize-corner），这里不另写一份数字：
+ * CSS 变量上（--zhituan-resize-edge / --zhituan-resize-corner），这里不另写一份数字：
  * 无头探针要按着同一组数字去这些位置下指，两处对不上就验不出东西。
  *
  * 压在谁头上：手柄是最后画的，因此顶栏与右栏的**留白**（那 4px 内边距）在手柄下面。
@@ -78,14 +78,14 @@ const HANDLES: ReadonlyArray<{ edge: ResizeEdge; cursor: string }> = [
 .edge-s {
   left: 0;
   right: 0;
-  height: var(--moyu-resize-edge);
+  height: var(--zhituan-resize-edge);
 }
 
 .edge-w,
 .edge-e {
   top: 0;
   bottom: 0;
-  width: var(--moyu-resize-edge);
+  width: var(--zhituan-resize-edge);
 }
 
 .edge-n {
@@ -115,8 +115,8 @@ const HANDLES: ReadonlyArray<{ edge: ResizeEdge; cursor: string }> = [
 .edge-ne,
 .edge-sw,
 .edge-se {
-  width: var(--moyu-resize-corner);
-  height: var(--moyu-resize-corner);
+  width: var(--zhituan-resize-corner);
+  height: var(--zhituan-resize-corner);
 }
 
 .edge-nw {

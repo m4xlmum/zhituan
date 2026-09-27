@@ -57,7 +57,7 @@ const step = (what) => console.log(`  · ${what}`)
 
 /** 把要用的几份 TS 各打成一包再 require。验真的，不验抄本 */
 async function buildModules() {
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-sect-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-sect-'))
   await esbuild.build({
     entryPoints: [
       path.join(ROOT, 'src', 'shared', 'presets.ts'),
@@ -190,7 +190,7 @@ app.whenReady().then(async () => {
   }
 
   const tempDir = (tag) => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `moyu-${tag}-`))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `zhituan-${tag}-`))
     tempDirs.push(dir)
     return dir
   }

@@ -56,10 +56,10 @@
    「可见」——这个 ✕ 就是那么混过了第一轮自查（`chrome/TabStrip.vue`）。
 
 9. **自定义属性里的 `var()` 是在「声明它的那个元素」上完成替换的。**
-   底板的颜色令牌写在 `:root` 上：`--moyu-surface: rgb(255 255 255 / var(--moyu-alpha))`，
-   而 `--moyu-alpha` 原本写在组件自己的根节点（`.root` / `.panel`）上——于是
+   底板的颜色令牌写在 `:root` 上：`--zhituan-surface: rgb(255 255 255 / var(--zhituan-alpha))`，
+   而 `--zhituan-alpha` 原本写在组件自己的根节点（`.root` / `.panel`）上——于是
    `:root` 上早就把它替换成了一个定值（默认 1），再继承下去的颜色根本不参与替换。
-   实测症状极其安静：`--moyu-alpha` 读到 0.35，顶栏的实测底色却仍是
+   实测症状极其安静：`--zhituan-alpha` 读到 0.35，顶栏的实测底色却仍是
    `rgb(255, 255, 255)`——滑块在动，画面纹丝不动。**两者必须落在同一层**，
    也就是 `document.documentElement`（`composables/useBackgroundAlpha.ts`）。
    这条关系现在由 `spike/preview.js --bg 0.35` 的 `surfaces` 逐项盯着。
@@ -132,8 +132,8 @@
     （`renderer/pdf.html` + pdf.js，Apache-2.0），也是**唯一一张画在标签条上的自家页面**：
     `kind = 'pdf'`、有标题、有 ✕、能被切走，而对外的地址仍是那个 `file:///…/book.pdf`
     ——历史、会话恢复、地址栏、离线阅读那一行读的都是它。**字节不走 `file://`**：
-    `moyu-pdf://doc/<token>`，token ↔ 路径的对应表只在主进程里，路径从不进渲染进程；
-    资源走 `moyu-pdf://asset/<目录>/<文件>`，白名单之外的目录一律 404（Q54）。
+    `zhituan-pdf://doc/<token>`，token ↔ 路径的对应表只在主进程里，路径从不进渲染进程；
+    资源走 `zhituan-pdf://asset/<目录>/<文件>`，白名单之外的目录一律 404（Q54）。
     `registerPdfScheme()` 必须在 app ready **之前**调用，晚了协议就是白注册。
 
 18. **`webContents.zoomLevel` 改的就是 `devicePixelRatio`，而且它不发 `resize`。**
@@ -188,7 +188,7 @@ src/renderer/  chrome 界面 / 弹出面板 / 系统设置 / PDF 阅读页
 | `src/main/services/windowLeaveWatcher.ts` | 光标轮询、迟滞、挂起门控 |
 | `src/main/services/geometry.ts` | 版面矩形计算，坐标判断的唯一来源 |
 | `src/main/services/updateService.ts` | 更新那一路：查 `latest.yml` → 比版本 → 下载并校验 sha512 → 起安装程序。**不用 electron-updater** 的三条理由写在文件头 |
-| `src/main/services/pdfReader.ts` | 本机 PDF 那条路：`moyu-pdf://` 的两张面（字节与资源）、token ↔ 路径的对应表、阅读页的地址 |
+| `src/main/services/pdfReader.ts` | 本机 PDF 那条路：`zhituan-pdf://` 的两张面（字节与资源）、token ↔ 路径的对应表、阅读页的地址 |
 | `src/main/services/pageStyler.ts` | 注入访客页面的三样东西：透明底、藏滚动条、离线阅读透明度在 **TXT 那一半**上的 `opacity`（第三条只给本机文件，见第 20 条；PDF 那一半由页面自己落在画布底色上） |
 | `src/renderer/src/home/useRows.ts` | 起始页的行模型与交互：三套主题共用，世界组件只负责画 |
 | `src/renderer/src/pdf/PdfApp.vue` | 阅读页：pdf.js 把一页画进画布，再把纸收掉、把字上成一份固定的近黑墨（这一页不写主题，见 `useTheme.ts`；排版在 `styles/pdf.css`）；离线阅读透明度在这一页上落的是**画布的元素底色**（那张纸），不是 `opacity`（见第 20 条） |

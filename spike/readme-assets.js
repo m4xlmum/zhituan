@@ -189,7 +189,7 @@ function appWindow(pageFile, scale, chromeFile = 'chrome.png') {
 
 /** 页脚一行：左边项目名，右边一句事实。压在底部，两边都不抢视线 */
 const footer = (right) =>
-  `<div class="footer"><span>摸鱼阅读 · moyu-reader</span><span>${right}</span></div>`
+  `<div class="footer"><span>纸团 · zhituan</span><span>${right}</span></div>`
 
 /** 黑底版式的公共部分：极深黑、一层很淡的暖光、一层纸张颗粒 */
 const SHELL = `
@@ -267,8 +267,8 @@ function htmlBanner() {
     <div class="wrap">
       <div class="left">
         <div class="eyebrow">WINDOWS · ELECTRON · 逐像素透明</div>
-        <h1>摸鱼阅读</h1>
-        <div class="latin">moyu-reader</div>
+        <h1>纸团</h1>
+        <div class="latin">zhituan</div>
         <div class="tagline">把网页装进一颗<br>能藏起来的球里</div>
         <div class="note">可调透明、置顶，鼠标一离开就收起。<br>在工作场景下低调地读网页。</div>
         <div class="tags"><span>开源 · GPL-2.0</span><span>${VERSION}</span><span>代码完全独立实现</span></div>
@@ -321,7 +321,7 @@ function htmlFeatures() {
    * 在现在的口径下却是三张完全相同、逐像素一样的图。
    *
    * 正文那一条取 60px，是**量出来的**：这一段里三套皮各写各的名字（纸白与夜色写着
-   * 「摸鱼阅读」，终端世界那套写着 MOYU-READER 加一个 `> ▌` 光标），底子也各是一色
+   * 「纸团」，终端世界那套写着 ZHITUAN 加一个 `> ▌` 光标），底子也各是一色
    * （白 / 近黑 / 黑），三行并排一眼就能分开。再多切就放不下了：卡片里那块媒体区
    * 高 340，三行加上两道 9px 的缝一共只能占 330——60 正好，再高一行就顶出框外，
    * 而 overflow:hidden 会把第三行整个吃掉，图上只看得到「三套主题只有两套」。

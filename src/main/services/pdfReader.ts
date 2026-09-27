@@ -8,8 +8,8 @@
  * 只能自己画：pdf.js 把页面画进 canvas，纸要么根本没画（`background: transparent`），
  * 要么被逐像素键掉——同一份量具量到 563362 个透明像素。
  *
- *   moyu-pdf://doc/<token>           一份本机 PDF 的字节（支持 Range）
- *   moyu-pdf://asset/<目录>/<文件>   pdf.js 运行时按需取的四样资源
+ *   zhituan-pdf://doc/<token>           一份本机 PDF 的字节（支持 Range）
+ *   zhituan-pdf://asset/<目录>/<文件>   pdf.js 运行时按需取的四样资源
  *
  * 为什么要另开一条协议，而不是让页面直接 `fetch('file:///…')`：`file:` 页面去
  * fetch 另一个 `file:` 是被挡死的（file 来源是不透明的，CORS 过不去），而 pdf.js
@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url'
 import { log } from './logger'
 import { rendererUrl } from './rendererUrl'
 
-export const PDF_SCHEME = 'moyu-pdf'
+export const PDF_SCHEME = 'zhituan-pdf'
 
 /** 协议里的两个「主机名」：一份文档、一份资源 */
 const DOC_HOST = 'doc'
@@ -90,7 +90,7 @@ export function registerPdfScheme(): void {
 /**
  * 把这条协议挂到实际使用的会话上。
  *
- * 挂的是**分区会话**而不是默认会话：本程序所有页面都跑在 `persist:moyu`
+ * 挂的是**分区会话**而不是默认会话：本程序所有页面都跑在 `persist:zhituan`
  * 那个分区里（见 sessionSetup），挂错了地方等于这条协议根本不存在。
  * 只能在 app ready 之后调用——`session.fromPartition` 就是那时的东西。
  */
@@ -101,7 +101,7 @@ export function registerPdfProtocol(ses: Session): void {
 /**
  * 一本本机 PDF 的阅读页地址（文件路径不出主进程）。
  *
- * 地址里只带 token。阅读页据此去 `moyu-pdf://doc/<token>` 取字节，自己既不知道
+ * 地址里只带 token。阅读页据此去 `zhituan-pdf://doc/<token>` 取字节，自己既不知道
  * 这本书在哪儿，也拿不到别的路径。
  *
  * 万一这条 file: 地址解析不出路径（Windows 上的网络路径 `file://主机/共享/…`
@@ -213,7 +213,7 @@ function serveAsset(rest: string, cors: Record<string, string>): Response {
   /*
    * 两道都留着：先按名字判目录在不在名单里，拼出来的路径**再核一次**
    * 落在那个目录之内。这条协议的输入来自页面，而页面不算可信——
-   * 少一道，`moyu-pdf://asset/cmaps/../../../../Users/…` 就成了一个
+   * 少一道，`zhituan-pdf://asset/cmaps/../../../../Users/…` 就成了一个
    * 「读任意文件」的接口。
    */
   const cut = rest.indexOf('/')

@@ -83,7 +83,7 @@ app.on('web-contents-created', (_event, wc) => {
 
 /** 把要用的几份 TS 各打成一包再 require。理由与 window-max.js 同：验真的，不验抄本 */
 async function buildModules() {
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-screens-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-screens-'))
   await esbuild.build({
     entryPoints: [
       path.join(ROOT, 'src', 'main', 'services', 'windowController.ts'),
@@ -112,7 +112,7 @@ async function buildModules() {
 
 /** 一页本地网页，tag 用来在场上的几份文档里认出它 */
 function writePage(tag) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `moyu-screen-${tag}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `zhituan-screen-${tag}-`))
   const file = path.join(dir, 'page.html')
   fs.writeFileSync(
     file,
@@ -159,7 +159,7 @@ async function main() {
   const { ConfigStore } = mods.configStore
   const { WindowRegistry } = mods.registry
 
-  const config = new ConfigStore(fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-screens-config-')))
+  const config = new ConfigStore(fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-screens-config-')))
   const displays = screen.getAllDisplays()
   config.set((c) => ({
     ...c,
@@ -172,7 +172,7 @@ async function main() {
     }
   }))
 
-  const ses = session.fromPartition('moyu-screens-probe')
+  const ses = session.fromPartition('zhituan-screens-probe')
   // 自家那两屏带着 preview-preload 进来（它们的真身就是界面那两个文档），
   // 那份假桥要问主进程要一组「预览参数」，不问就会在渲染进程里干等
   ipcMain.on('preview:options', (event) => {
@@ -276,8 +276,8 @@ async function main() {
   const bId = tabs.create({ url: pageB, activate: true })
   const loaded = await waitUntil(
     () =>
-      viewsOf('moyu-screen-A-').length === 1 &&
-      viewsOf('moyu-screen-B-').length === 1 &&
+      viewsOf('zhituan-screen-A-').length === 1 &&
+      viewsOf('zhituan-screen-B-').length === 1 &&
       tabs.list().length === 2
   )
   record(
@@ -307,7 +307,7 @@ async function main() {
       viewsOf('home.html').length === 1 &&
       homeUp &&
       visibleOf(homeView) === true &&
-      viewsOf('moyu-screen-').every((v) => visibleOf(v) === false)
+      viewsOf('zhituan-screen-').every((v) => visibleOf(v) === false)
       ? '是'
       : '否',
     {
@@ -477,7 +477,7 @@ async function main() {
     '停在自家屏上时打开一个地址：新开一张网页标签并切过去（而不是静默无反应）',
     afterNull.tabs.length === 1 &&
       nullTab?.url.startsWith('file:') &&
-      nullTab.url.includes('moyu-screen-C-') &&
+      nullTab.url.includes('zhituan-screen-C-') &&
       afterNull.activeTabId === nullTab.id &&
       afterNull.screen === null &&
       kindOf(nullTab.id) === 'guest'
@@ -497,7 +497,7 @@ async function main() {
     '拿自家那一屏的 id 去导航：一样新开一张网页标签（自家屏带着 preload，不能装访客内容）',
     homeOwnId !== null &&
       afterOwn.tabs.length === 2 &&
-      ownTab?.url.includes('moyu-screen-D-') &&
+      ownTab?.url.includes('zhituan-screen-D-') &&
       afterOwn.activeTabId === ownTab.id &&
       kindOf(homeOwnId) === 'home'
       ? '是'

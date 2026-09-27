@@ -49,7 +49,9 @@ export default defineConfig({
           popover: resolve('src/renderer/popover.html'),
           settings: resolve('src/renderer/settings.html'),
           // 本机 PDF 的阅读页（pdf.js 画进 canvas的那一张，见 src/main/services/pdfReader.ts）
-          pdf: resolve('src/renderer/pdf.html')
+          pdf: resolve('src/renderer/pdf.html'),
+          // 本机 EPUB 的阅读页（章节注入 Shadow DOM，纸归我们画，见 src/main/services/bookReader.ts）
+          book: resolve('src/renderer/book.html')
         }
       }
     }

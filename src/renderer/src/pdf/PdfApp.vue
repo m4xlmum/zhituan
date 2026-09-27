@@ -61,11 +61,11 @@ import { inkCanvas, inkFromCss, type Polarity } from './keying'
 /**
  * pdf.js 运行时那四样资源（cMap、标准字体、wasm、色彩描述）的出处。
  *
- * 走主进程挂的那条 `moyu-pdf://` 协议，而不是相对路径：这一页在 `file:` 下，
+ * 走主进程挂的那条 `zhituan-pdf://` 协议，而不是相对路径：这一页在 `file:` 下，
  * 而 `file:` 页面去 fetch 另一个 `file:` 是被挡死的（file 来源不透明，CORS 过不去）。
  * 协议与目录白名单见 src/main/services/pdfReader.ts。
  */
-const ASSET = 'moyu-pdf://asset/'
+const ASSET = 'zhituan-pdf://asset/'
 
 /** 右下角那条浮层：动一下出现，静一会儿自己退开 */
 const HUD_IDLE_MS = 2600
@@ -130,7 +130,7 @@ let token = 0
 let painting = false
 /** 下一次画成之后落在页首还是页尾（往回翻要落在页尾，读起来才接得上） */
 let edge: 'top' | 'bottom' = 'top'
-/** 当前墨色，来自 --moyu-ink。这一页不写主题，因此它是一份定值，画的时候直接取用 */
+/** 当前墨色，来自 --zhituan-ink。这一页不写主题，因此它是一份定值，画的时候直接取用 */
 let inkColor: [number, number, number] = [231, 233, 238]
 
 let wheelAcc = 0
@@ -172,17 +172,17 @@ const paperAlpha = computed(() => {
  * themes.css 的 `:root` 那一组上——纸白那一份近黑的墨。读到的时候样式表已经
  * 应用完了：五份文档的 `themes.css` 都是 `<link>`，先把样式算好，模块脚本才跑。
  *
- * 读的是**算好的** --moyu-ink，不是把颜色抄在这里：配色唯一的真相仍在主题层，
+ * 读的是**算好的** --zhituan-ink，不是把颜色抄在这里：配色唯一的真相仍在主题层，
  * 抄一份就等于多一处「改了主题层但 PDF 里的字没跟着变」。
  *
  * 1.5.1 之前这里是跟着主题走的（磷绿下整本书的字都是荧光绿）。那是错的：
  * 这一页画的是**内容**，内容不该被界面的皮肤染上颜色——与「网页永远不受影响」
  * 是同一条边界。
  */
-inkColor = inkFromCss(getComputedStyle(document.documentElement).getPropertyValue('--moyu-ink'))
+inkColor = inkFromCss(getComputedStyle(document.documentElement).getPropertyValue('--zhituan-ink'))
 
 /**
- * 纸的颜色：主题层里「面」的三通道（`--moyu-surface-rgb`，纸白那一份是
+ * 纸的颜色：主题层里「面」的三通道（`--zhituan-surface-rgb`，纸白那一份是
  * `255 255 255`）。
  *
  * 读它而不是把 `255, 255, 255` 抄在这里，与上面那行墨色是同一条规矩：配色
@@ -191,7 +191,7 @@ inkColor = inkFromCss(getComputedStyle(document.documentElement).getPropertyValu
  */
 const paperRgb = (() => {
   const parts = getComputedStyle(document.documentElement)
-    .getPropertyValue('--moyu-surface-rgb')
+    .getPropertyValue('--zhituan-surface-rgb')
     .trim()
     .split(/\s+/)
     .map(Number)
@@ -259,7 +259,7 @@ async function paintOnce(): Promise<void> {
   el.height = Math.round(vp.height * dpr)
   el.style.width = `${Math.round(vp.width)}px`
   el.style.height = `${Math.round(vp.height)}px`
-  document.documentElement.style.setProperty('--moyu-zoom', String(z))
+  document.documentElement.style.setProperty('--zhituan-zoom', String(z))
 
   if (!ctx) return
   /*
@@ -470,7 +470,7 @@ onMounted(async () => {
   }
 
   try {
-    const res = await fetch(`moyu-pdf://doc/${book}`)
+    const res = await fetch(`zhituan-pdf://doc/${book}`)
     if (!res.ok) throw new Error(`取不到这本书（${res.status}）`)
     const bytes = new Uint8Array(await res.arrayBuffer())
 
@@ -580,8 +580,8 @@ onBeforeUnmount(() => {
   transform: translate(-50%, -50%);
   margin: 0;
   max-width: 80%;
-  color: var(--moyu-text-dim);
-  font: 13px/1.7 var(--moyu-font);
+  color: var(--zhituan-text-dim);
+  font: 13px/1.7 var(--zhituan-font);
   text-align: center;
 }
 
@@ -589,7 +589,7 @@ onBeforeUnmount(() => {
  * 右下角那条浮层。
  *
  * 它跟着缩放一起变大——整份文档都在缩放里，一段写死 13px 的字在 200% 下是 26px。
- * 因此每一处尺寸都按 --moyu-zoom 除回去（由 PdfApp 在画完一页时写在文档根上，
+ * 因此每一处尺寸都按 --zhituan-zoom 除回去（由 PdfApp 在画完一页时写在文档根上，
  * 值就是那个 z），于是它在任何缩放档下都是同一副大小。
  *
  * 除法的写法是 CSS 值四则里的除法，右操作数是个数：`calc(12px / 1.2)`。
@@ -597,18 +597,18 @@ onBeforeUnmount(() => {
  */
 .hud {
   position: fixed;
-  right: calc(12px / var(--moyu-zoom, 1));
-  bottom: calc(12px / var(--moyu-zoom, 1));
+  right: calc(12px / var(--zhituan-zoom, 1));
+  bottom: calc(12px / var(--zhituan-zoom, 1));
   display: flex;
   align-items: center;
-  gap: calc(4px / var(--moyu-zoom, 1));
-  padding: 0 calc(4px / var(--moyu-zoom, 1));
-  height: calc(26px / var(--moyu-zoom, 1));
+  gap: calc(4px / var(--zhituan-zoom, 1));
+  padding: 0 calc(4px / var(--zhituan-zoom, 1));
+  height: calc(26px / var(--zhituan-zoom, 1));
   border-radius: 999px;
-  background: var(--moyu-surface-active);
-  color: var(--moyu-text-dim);
-  font-family: var(--moyu-font);
-  font-size: calc(12px / var(--moyu-zoom, 1));
+  background: var(--zhituan-surface-active);
+  color: var(--zhituan-text-dim);
+  font-family: var(--zhituan-font);
+  font-size: calc(12px / var(--zhituan-zoom, 1));
   line-height: 1;
   opacity: 1;
   transition: opacity 220ms ease-out;
@@ -624,21 +624,21 @@ onBeforeUnmount(() => {
 }
 
 .hud__count {
-  padding: 0 calc(8px / var(--moyu-zoom, 1));
+  padding: 0 calc(8px / var(--zhituan-zoom, 1));
   font-variant-numeric: tabular-nums;
 }
 
 .hud__key {
   pointer-events: auto;
-  height: calc(20px / var(--moyu-zoom, 1));
-  padding: 0 calc(9px / var(--moyu-zoom, 1));
+  height: calc(20px / var(--zhituan-zoom, 1));
+  padding: 0 calc(9px / var(--zhituan-zoom, 1));
   border-radius: 999px;
   color: inherit;
   font: inherit;
 }
 
 .hud__key:hover {
-  background: var(--moyu-accent-soft);
-  color: var(--moyu-accent);
+  background: var(--zhituan-accent-soft);
+  color: var(--zhituan-accent);
 }
 </style>

@@ -16,7 +16,7 @@
         是 wasm，没有它就只剩那条慢得多的 JS 退路。
       · `blob:`（script-src / worker-src）——worker 是 Vite inline 出来的 blob
         （`file:` 页面 new Worker 一个 `file:` 脚本会被当成跨来源挡掉，见 PdfApp）。
-      · `moyu-pdf:`（script-src / connect-src）——主进程挂的那条资源通道：
+      · `zhituan-pdf:`（script-src / connect-src）——主进程挂的那条资源通道：
         cmap、标准字体、wasm 都是运行时 fetch 回来的。它还出现在 script-src 里，
         是因为 pdf.js 里有两处 `await import(...)`（pdf.mjs 的 CDN wrapper 与
         fake worker、worker 里那两个 wasm 的 JS 退路），目标 URL 是运行时算出来的，
@@ -28,9 +28,9 @@
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob: moyu-pdf:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' moyu-pdf: blob:"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob: zhituan-pdf:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' zhituan-pdf: blob:"
     />
-    <!-- 主题与令牌：墨色（--moyu-ink）与那条浮层的面都从这两份里来 -->
+    <!-- 主题与令牌：墨色（--zhituan-ink）与那条浮层的面都从这两份里来 -->
     <link rel="stylesheet" href="./src/styles/themes.css" />
     <link rel="stylesheet" href="./src/styles/tokens.css" />
     <link rel="stylesheet" href="./src/styles/pdf.css" />

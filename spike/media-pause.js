@@ -63,7 +63,7 @@ const step = (what) => console.log(`  · ${what}`)
 
 /** 把要用的几份 TS 各打成一包再 require。理由与 window-max.js 同：验真的，不验抄本 */
 async function buildModules() {
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-media-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-media-'))
   await esbuild.build({
     entryPoints: [
       path.join(ROOT, 'src', 'main', 'services', 'windowController.ts'),
@@ -129,7 +129,7 @@ function wavDataUrl() {
  * 而「等不到」会伪装成「没暂停」。消息投递不受节流影响。
  */
 function writePage(tag, wav) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `moyu-media-${tag}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `zhituan-media-${tag}-`))
   const file = path.join(dir, 'page.html')
   const frame = `<!doctype html><meta charset="utf-8"><body style="margin:0">
     <audio id="f" loop src="${wav}"></audio>
@@ -140,7 +140,7 @@ function writePage(tag, wav) {
         if (!e.data || e.data.ask !== 'state') return
         parent.postMessage({
           paused: el.paused,
-          marked: el.__moyuPaused === true,
+          marked: el.__zhituanPaused === true,
           readyState: el.readyState
         }, '*')
       })
@@ -153,8 +153,8 @@ function writePage(tag, wav) {
   <audio id="u" loop src="${wav}"></audio>
   <iframe id="fr" src="data:text/html;charset=utf-8,${encodeURIComponent(frame)}"></iframe>
   <script>
-    window.moyuFrame = null
-    addEventListener('message', (e) => { window.moyuFrame = e.data })
+    window.zhituanFrame = null
+    addEventListener('message', (e) => { window.zhituanFrame = e.data })
 
     const v = document.getElementById('v')
     const u = document.getElementById('u')
@@ -162,24 +162,24 @@ function writePage(tag, wav) {
 
     // 主动播起来，然后把 #u 停掉——那一下算「用户自己按的暂停」，
     // 展开时不该被我们放起来（脚本里那枚记号就是为这一条设的）
-    window.moyuStart = () => {
+    window.zhituanStart = () => {
       v.play().catch(() => {})
       u.play().catch(() => {})
       setTimeout(() => u.pause(), 250)
     }
-    window.moyuAskFrame = () => {
-      window.moyuFrame = null
+    window.zhituanAskFrame = () => {
+      window.zhituanFrame = null
       fr.contentWindow.postMessage({ ask: 'state' }, '*')
     }
-    window.moyuMedia = () => {
+    window.zhituanMedia = () => {
       const of = (el) => ({
         id: el.id,
         paused: el.paused,
-        marked: el.__moyuPaused === true,
+        marked: el.__zhituanPaused === true,
         readyState: el.readyState,
         error: el.error ? el.error.code : null
       })
-      return { v: of(v), u: of(u), frame: window.moyuFrame }
+      return { v: of(v), u: of(u), frame: window.zhituanFrame }
     }
   </script>
 </body>`,
@@ -195,10 +195,10 @@ async function media(page) {
       page.executeJavaScript(code),
       new Promise((res) => setTimeout(() => res('timeout'), 4000))
     ]).catch((err) => `err:${err?.message ?? err}`)
-  const asked = await evaluate('window.moyuAskFrame(), true')
+  const asked = await evaluate('window.zhituanAskFrame(), true')
   if (asked !== true) return `问不到：${asked}`
   await delay(150)
-  return evaluate('window.moyuMedia()')
+  return evaluate('window.zhituanMedia()')
 }
 
 const reading = (m) => (m && typeof m === 'object' && m.v ? m : null)
@@ -231,7 +231,7 @@ app.whenReady().then(async () => {
   const { ConfigStore } = mods.configStore
   const { WindowRegistry } = mods.registry
 
-  const config = new ConfigStore(fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-media-config-')))
+  const config = new ConfigStore(fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-media-config-')))
   const displays = screen.getAllDisplays()
   config.set((c) => ({
     ...c,
@@ -244,7 +244,7 @@ app.whenReady().then(async () => {
     }
   }))
 
-  const ses = session.fromPartition('moyu-media-probe')
+  const ses = session.fromPartition('zhituan-media-probe')
   ipcMain.on('preview:options', (event) => {
     event.returnValue = {
       mode: 'default',
@@ -316,8 +316,8 @@ app.whenReady().then(async () => {
   // 按 URL 认页，不按子视图次序：次序会随「谁在最上层」变（syncChromeOrder 会重排）
   const chrome = controller.getChromeView()
   const views = win.contentView.children.filter((v) => v !== chrome).map((v) => v.webContents)
-  const page = views.find((wc) => wc.getURL().includes('moyu-media-front-'))
-  const back = views.find((wc) => wc.getURL().includes('moyu-media-back-'))
+  const page = views.find((wc) => wc.getURL().includes('zhituan-media-front-'))
+  const back = views.find((wc) => wc.getURL().includes('zhituan-media-back-'))
   if (views.length !== 2 || !page || !back) {
     record('Q0', '前提：场上正好两页（前台 + 后台），都能认出来', '否', {
       视图数: views.length,
@@ -329,7 +329,7 @@ app.whenReady().then(async () => {
 
   // 让两页的媒体都真的播起来（#u 各自被页面自己停掉）
   for (const p of [page, back]) {
-    await p.executeJavaScript('window.moyuStart()').catch(() => {})
+    await p.executeJavaScript('window.zhituanStart()').catch(() => {})
   }
   const alive = await waitPlaying(page)
   record(

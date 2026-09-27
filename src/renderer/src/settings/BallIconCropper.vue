@@ -323,9 +323,9 @@ function save(): void {
 .sheet {
   max-width: 100%;
   padding: 18px 20px 16px;
-  border-radius: var(--moyu-radius-md, 12px);
-  background: var(--moyu-panel, #ffffff);
-  color: var(--moyu-ink, #111827);
+  border-radius: var(--zhituan-radius-md, 12px);
+  background: var(--zhituan-panel, #ffffff);
+  color: var(--zhituan-ink, #111827);
   box-shadow: 0 18px 48px rgba(9, 11, 14, 0.35);
 }
 
@@ -338,7 +338,7 @@ function save(): void {
   margin-top: 6px;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--moyu-text-dim, #6b7280);
+  color: var(--zhituan-text-dim, #6b7280);
 }
 
 .body {
@@ -401,7 +401,7 @@ function save(): void {
   display: grid;
   place-items: center;
   font-size: 12px;
-  color: var(--moyu-text-dim, #6b7280);
+  color: var(--zhituan-text-dim, #6b7280);
   pointer-events: none;
 }
 
@@ -416,7 +416,7 @@ function save(): void {
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--moyu-text-dim, #6b7280);
+  color: var(--zhituan-text-dim, #6b7280);
 }
 
 .zoom-range {
@@ -440,7 +440,7 @@ function save(): void {
 
 .side-label {
   font-size: 12px;
-  color: var(--moyu-text-dim, #6b7280);
+  color: var(--zhituan-text-dim, #6b7280);
   white-space: nowrap;
 }
 
@@ -458,7 +458,7 @@ function save(): void {
   height: var(--ball, 40px);
   border-radius: 50%;
   overflow: hidden;
-  background: var(--moyu-accent, #2563eb);
+  background: var(--zhituan-accent, #2563eb);
 }
 
 /* 位置与缩放全部由行内样式给（见 previewInnerStyle），这里只管裁切 */
@@ -477,7 +477,7 @@ function save(): void {
 .error {
   margin-top: 10px;
   font-size: 12px;
-  color: var(--moyu-danger, #b42318);
+  color: var(--zhituan-danger, #b42318);
 }
 
 .actions {
@@ -497,8 +497,8 @@ function save(): void {
   padding: 0 12px;
   display: inline-flex;
   align-items: center;
-  border-radius: var(--moyu-radius-sm, 6px);
-  border: 1px solid var(--moyu-hairline, rgba(17, 24, 39, 0.12));
+  border-radius: var(--zhituan-radius-sm, 6px);
+  border: 1px solid var(--zhituan-hairline, rgba(17, 24, 39, 0.12));
   background: transparent;
   font-size: 12px;
   color: inherit;
@@ -511,7 +511,7 @@ function save(): void {
  * 5% 的黑叠在 #16181d 上，与没悬停时是同一个颜色。
  */
 .btn:hover:not(:disabled) {
-  background: var(--moyu-surface-hover, rgba(17, 24, 39, 0.05));
+  background: var(--zhituan-surface-hover, rgba(17, 24, 39, 0.05));
 }
 
 .btn:disabled {
@@ -521,8 +521,8 @@ function save(): void {
 
 .btn.primary {
   border-color: transparent;
-  background: var(--moyu-accent, #2563eb);
-  color: var(--moyu-on-fill, #ffffff);
+  background: var(--zhituan-accent, #2563eb);
+  color: var(--zhituan-on-fill, #ffffff);
 }
 
 .btn.primary:hover:not(:disabled) {

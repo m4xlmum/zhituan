@@ -237,7 +237,7 @@ export class WindowController {
       skipTaskbar: !w.showInTaskbar,
       hasShadow: false,
       backgroundColor: '#00000000',
-      title: '摸鱼阅读'
+      title: '纸团'
     })
     this.win = win
     this.expandedBounds = bounds

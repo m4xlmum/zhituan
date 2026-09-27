@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": "2026-09-25T14:10:00+08:00",
-  "title": "Design System: 摸鱼阅读 (moyu-reader)",
+  "title": "Design System: 纸团 (zhituan)",
   "extensions": {
     "colorMeta": {
       "ground": {
@@ -308,7 +308,7 @@
     "typographyMeta": {
       "display": {
         "displayName": "报头",
-        "purpose": "起始页报头「摸鱼阅读」（终端世界 MOYU-READER）唯一一处；自带中文衬线，700。"
+        "purpose": "起始页报头「纸团」（终端世界 ZHITUAN）唯一一处；自带中文衬线，700。"
       },
       "headline": {
         "displayName": "当前栏",
@@ -353,7 +353,7 @@
       },
       {
         "name": "ball-active",
-        "value": "0 1px 4px rgba(17, 24, 39, 0.3), inset 0 0 0 2px color-mix(in srgb, var(--moyu-on-fill) 45%, transparent)",
+        "value": "0 1px 4px rgba(17, 24, 39, 0.3), inset 0 0 0 2px color-mix(in srgb, var(--zhituan-on-fill) 45%, transparent)",
         "purpose": "悬浮球按下：往里收，不往外扩。"
       },
       {
@@ -577,8 +577,8 @@
     ],
     "themeNotes": {
       "source": "颜色与形状的值只有一份，在 src/renderer/src/styles/themes.css：一个主题 = 一段变量组，不写任何选择器。",
-      "chromeFaceForm": "界面的「面」在主题层里存的是三通道（--moyu-*-rgb，不带 alpha），由 tokens.css 拼上 --moyu-alpha。上面的 chrome 值是等价实色（alpha = 1）；磷绿的 0c1d12 / 112d1b 是 0.08 与 0.15 的荧光绿叠在 #050b07 上之后的结果，与页上那两个悬停严格同色。",
-      "worldOverride": "html[data-world='terminal'] 与主题正交，只覆盖形状与字体：--radius-sm/--radius/--radius-pill 与 --moyu-radius* 全部归零、--font/--moyu-font 换成等宽堆栈、--font-display 指回 --font，并给 body/input/button 加 text-shadow: 0 0 3px color-mix(in srgb, currentColor 38%, transparent)。",
+      "chromeFaceForm": "界面的「面」在主题层里存的是三通道（--zhituan-*-rgb，不带 alpha），由 tokens.css 拼上 --zhituan-alpha。上面的 chrome 值是等价实色（alpha = 1）；磷绿的 0c1d12 / 112d1b 是 0.08 与 0.15 的荧光绿叠在 #050b07 上之后的结果，与页上那两个悬停严格同色。",
+      "worldOverride": "html[data-world='terminal'] 与主题正交，只覆盖形状与字体：--radius-sm/--radius/--radius-pill 与 --zhituan-radius* 全部归零、--font/--zhituan-font 换成等宽堆栈、--font-display 指回 --font，并给 body/input/button 加 text-shadow: 0 0 3px color-mix(in srgb, currentColor 38%, transparent)。",
       "scanline": "扫描线那一层（body::after：1px 暗 / 2px 透亮的 repeating-linear-gradient 叠球面管余辉，crt-breathe 4.6s）只在起始页，不进界面层——它是铺满视口的覆盖层，进了 chrome 就把桌面盖住。",
       "radiusPillUnused": "页用不上 --radius-pill（999px）：上一版那个 46px 胶囊搜索框是它唯一的用户，已经没了。"
     },
@@ -591,7 +591,7 @@
       "refersTo": "plate-current",
       "description": "分类页的招牌：当前那一栏 26px 在 --text 上，底下压一根 2px 强调色短线（正好盖住栏目线那根 1px 细线）。",
       "html": "<nav class='ds-plates' aria-label='板块'><button class='ds-plate is-on' aria-pressed='true'>全部</button><button class='ds-plate'>视频</button><button class='ds-plate'>阅读</button><button class='ds-plate'>资讯</button><button class='ds-plate'>刷题</button><button class='ds-plate'>离线阅读</button></nav>",
-      "css": ".ds-plates { position:relative; display:flex; align-items:baseline; gap:18px; font-family:var(--font-display,'Moyu Display Serif','Noto Serif SC',serif); } .ds-plates::before { content:''; position:absolute; left:0; right:0; bottom:0; height:1px; background:var(--divider,#e6e8ec); } .ds-plate { position:relative; padding:0 0 6px; border:none; background:none; font:inherit; font-size:12px; line-height:1.15; color:var(--text-tertiary,#666d79); white-space:nowrap; cursor:pointer; transition:color 120ms ease-out; } .ds-plate:hover { color:var(--text-secondary,#5a6270); } .ds-plate:focus-visible { outline:2px solid var(--accent,#2f4a9e); outline-offset:2px; } .ds-plate.is-on { font-size:26px; color:var(--text,#15181d); } .ds-plate.is-on::after { content:''; position:absolute; left:0; right:0; bottom:0; height:2px; background:var(--accent,#2f4a9e); transform-origin:left center; animation:ds-rule-in 180ms cubic-bezier(0.16,1,0.3,1) both; } @keyframes ds-rule-in { from { transform:scaleX(0); } to { transform:scaleX(1); } } @media (prefers-reduced-motion: reduce) { .ds-plate.is-on::after { animation:none; } }"
+      "css": ".ds-plates { position:relative; display:flex; align-items:baseline; gap:18px; font-family:var(--font-display,'Zhituan Display Serif','Noto Serif SC',serif); } .ds-plates::before { content:''; position:absolute; left:0; right:0; bottom:0; height:1px; background:var(--divider,#e6e8ec); } .ds-plate { position:relative; padding:0 0 6px; border:none; background:none; font:inherit; font-size:12px; line-height:1.15; color:var(--text-tertiary,#666d79); white-space:nowrap; cursor:pointer; transition:color 120ms ease-out; } .ds-plate:hover { color:var(--text-secondary,#5a6270); } .ds-plate:focus-visible { outline:2px solid var(--accent,#2f4a9e); outline-offset:2px; } .ds-plate.is-on { font-size:26px; color:var(--text,#15181d); } .ds-plate.is-on::after { content:''; position:absolute; left:0; right:0; bottom:0; height:2px; background:var(--accent,#2f4a9e); transform-origin:left center; animation:ds-rule-in 180ms cubic-bezier(0.16,1,0.3,1) both; } @keyframes ds-rule-in { from { transform:scaleX(0); } to { transform:scaleX(1); } } @media (prefers-reduced-motion: reduce) { .ds-plate.is-on::after { animation:none; } }"
     },
     {
       "name": "输入行（下划线）",
@@ -672,7 +672,7 @@
     "keyCharacteristics": [
       "一条栏目线（六栏：全部 / 视频 / 阅读 / 资讯 / 刷题 / 离线阅读），当前栏 26px、其余 12px，一根 2px 强调色短线压在细线上。",
       "一列行式条目：动词 · 18px 图标格 · 名称 · 右端域名。没有卡片，没有磁贴，没有阴影。",
-      "报头与栏目线整条用的是自带的一份中文衬线（Moyu Display Serif，27,548 B 的 woff2 子集）；界面其余部分用平台字体栈。",
+      "报头与栏目线整条用的是自带的一份中文衬线（Zhituan Display Serif，27,548 B 的 woff2 子集）；界面其余部分用平台字体栈。",
       "主题管的是整个界面（顶栏、地址栏、标签条、右栏、悬浮球、面板、系统设置页、起始页），网页永远不受影响。",
       "行高只有一个数（28px，终端世界 22px），一屏放得下几行由实测高度除出来。"
     ],

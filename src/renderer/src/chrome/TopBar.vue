@@ -83,7 +83,7 @@ const siteLabel = computed(() => {
 
 /** 新建一张标签页并切过去 */
 async function newTab(): Promise<void> {
-  await window.moyu.tabs.create({ activate: true })
+  await window.zhituan.tabs.create({ activate: true })
 }
 
 /**
@@ -95,11 +95,11 @@ async function newTab(): Promise<void> {
  */
 function toggleAddress(event: MouseEvent): void {
   event.preventDefault()
-  window.moyu.win.setAddressOpen({ open: !props.addressOpen })
+  window.zhituan.win.setAddressOpen({ open: !props.addressOpen })
 }
 
 function toggleRail(): void {
-  window.moyu.win.setChrome({ rail: !props.railVisible })
+  window.zhituan.win.setChrome({ rail: !props.railVisible })
 }
 
 /** 手机 / 电脑模式。跟着当前标签页走，换一页就跟着那一页的状态 */
@@ -108,7 +108,7 @@ const mobile = computed(() => props.activeTab?.uaMode === 'mobile')
 function toggleUa(): void {
   const tabId = props.activeTabId
   if (!tabId) return
-  void window.moyu.page.setUa({ tabId, mode: mobile.value ? 'desktop' : 'mobile' })
+  void window.zhituan.page.setUa({ tabId, mode: mobile.value ? 'desktop' : 'mobile' })
 }
 
 function togglePin(): void {
@@ -118,21 +118,21 @@ function togglePin(): void {
 // 模板里的 window 指向组件实例而非全局对象，因此全局调用都要包一层方法
 function navBack(): void {
   const id = props.activeTabId
-  if (id) void window.moyu.nav.back({ tabId: id })
+  if (id) void window.zhituan.nav.back({ tabId: id })
 }
 
 function navForward(): void {
   const id = props.activeTabId
-  if (id) void window.moyu.nav.forward({ tabId: id })
+  if (id) void window.zhituan.nav.forward({ tabId: id })
 }
 
 function navReload(): void {
   const id = props.activeTabId
-  if (id) void window.moyu.nav.reload({ tabId: id })
+  if (id) void window.zhituan.nav.reload({ tabId: id })
 }
 
 function winMinimize(): void {
-  void window.moyu.win.minimize()
+  void window.zhituan.win.minimize()
 }
 
 /**
@@ -143,11 +143,11 @@ function winMinimize(): void {
  * 那两处都在最大化后仍在窗内的那一小块里。
  */
 function winMaximize(): void {
-  void window.moyu.win.maximize()
+  void window.zhituan.win.maximize()
 }
 
 function winClose(): void {
-  void window.moyu.win.close()
+  void window.zhituan.win.close()
 }
 
 /**
@@ -158,7 +158,7 @@ function winClose(): void {
  * 而托盘菜单里那些入口是明确意图，不该跟着变成开关。
  */
 function goHome(): void {
-  void (props.screen === 'home' ? window.moyu.ui.leaveScreen() : window.moyu.ui.openHome())
+  void (props.screen === 'home' ? window.zhituan.ui.leaveScreen() : window.zhituan.ui.openHome())
 }
 
 /**
@@ -172,7 +172,7 @@ function goHome(): void {
  * 齿怎么画准的账记在 Icon.vue 里。
  */
 function toggleSettings(): void {
-  void (props.screen === 'settings' ? window.moyu.ui.leaveScreen() : window.moyu.ui.openSettings())
+  void (props.screen === 'settings' ? window.zhituan.ui.leaveScreen() : window.zhituan.ui.openSettings())
 }
 </script>
 
@@ -298,13 +298,13 @@ function toggleSettings(): void {
 <style scoped>
 .topbar {
   flex: 0 0 auto;
-  height: var(--moyu-top-h);
+  height: var(--zhituan-top-h);
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 0 8px;
-  background: var(--moyu-surface);
-  border-bottom: 1px solid var(--moyu-hairline);
+  background: var(--zhituan-surface);
+  border-bottom: 1px solid var(--zhituan-hairline);
 }
 
 .group {
@@ -322,31 +322,31 @@ function toggleSettings(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--moyu-radius-sm);
-  color: var(--moyu-text-dim);
+  border-radius: var(--zhituan-radius-sm);
+  color: var(--zhituan-text-dim);
   white-space: nowrap;
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 
 .icon:hover:not(:disabled) {
-  background: var(--moyu-surface-hover);
-  color: var(--moyu-ink);
+  background: var(--zhituan-surface-hover);
+  color: var(--zhituan-ink);
 }
 
 .icon:disabled {
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
 }
 
 .icon.on {
-  color: var(--moyu-accent);
-  background: var(--moyu-accent-soft);
+  color: var(--zhituan-accent);
+  background: var(--zhituan-accent-soft);
 }
 
 .icon.danger:hover {
-  /* 悬停时底色换成实心红，字得跟着翻面——用 --moyu-on-fill 而不是写死白色：
+  /* 悬停时底色换成实心红，字得跟着翻面——用 --zhituan-on-fill 而不是写死白色：
      那是「压在实心色上」的那一支墨，配色改了它跟着改（纸白下是白字） */
-  color: var(--moyu-on-fill);
-  background: var(--moyu-danger);
+  color: var(--zhituan-on-fill);
+  background: var(--zhituan-danger);
 }
 
 .ellipsis {
@@ -365,20 +365,20 @@ function toggleSettings(): void {
   min-width: 120px;
   max-width: 260px;
   padding: 0 12px;
-  border-radius: var(--moyu-radius-pill);
-  background: var(--moyu-surface-hover);
-  color: var(--moyu-text-dim);
+  border-radius: var(--zhituan-radius-pill);
+  background: var(--zhituan-surface-hover);
+  color: var(--zhituan-text-dim);
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 
 .address-toggle:hover {
-  background: var(--moyu-surface-active);
-  color: var(--moyu-ink);
+  background: var(--zhituan-surface-active);
+  color: var(--zhituan-ink);
 }
 
 .address-toggle.on {
-  color: var(--moyu-accent);
-  background: var(--moyu-accent-soft);
+  color: var(--zhituan-accent);
+  background: var(--zhituan-accent-soft);
 }
 
 /*

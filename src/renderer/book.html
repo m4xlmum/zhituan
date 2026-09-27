@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      标签条上的名字由主进程写在标签上（本机文件只显示文件名），这一页的标题
+      从来不会露出来。写一个最朴素的，只为浏览器有得可读。
+    -->
+    <title>EPUB</title>
+    <!--
+      本机 EPUB 阅读页的 CSP。
+
+      这一页与 pdf.html 最大的不同：**它会把书里的内容放进 DOM**（PDF 那一页只有一张
+      canvas，书里的任何东西都到不了界面层）。既然书的内容进来了，这一条 CSP 就不是
+      走过场，它要挡住三件事：
+
+      · `script-src 'self'`——**没有** `zhituan-book:`。EPUB 里塞脚本是合法的，
+        而书的每一个字节都从那条协议来，于是这一条就把「书里的脚本」整个挡在门外。
+        与「bookReader.ts 的 MIME 表里刻意不列 .js」是两道独立的闸，任一道都够。
+      · `frame-src 'none'` / `object-src 'none'`——网页里那些能自己再开一层文档、
+        把外来的东西塞进来的口子，这一页一个都不需要（阅读页只画字与图）。
+      · `form-action 'none'`——书的正文里可以带表单，按下去不该能跳走。
+
+      `style-src` 留 `unsafe-inline` 是必须的，两个理由：开发期 Vite 用 <style> 注入
+      样式；而书自己的 <style> 与 <link> 里的样式表也要落到 Shadow DOM 里（书怎么排
+      自己的版是它的事，这一页只管把纸收掉）。
+
+      `img-src` / `font-src` / `connect-src` 都要放行 `zhituan-book:`——书的每一张图、
+      每一份样式表、每一个字体都从那一条协议取。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' zhituan-book:; img-src 'self' data: blob: zhituan-book:; font-src 'self' data: zhituan-book:; media-src zhituan-book:; connect-src 'self' zhituan-book:; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'"
+    />
+    <!-- 主题与令牌：纸的颜色（--zhituan-surface-rgb）从这两份里来 -->
+    <link rel="stylesheet" href="./src/styles/themes.css" />
+    <link rel="stylesheet" href="./src/styles/tokens.css" />
+    <link rel="stylesheet" href="./src/styles/book.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./src/main-book.ts"></script>
+  </body>
+</html>

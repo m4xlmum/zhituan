@@ -674,7 +674,7 @@ const MEASURE = `(() => {
       if (!bar) return null
       const s = getComputedStyle(bar)
       return {
-        alpha: root ? getComputedStyle(root).getPropertyValue('--moyu-alpha').trim() : null,
+        alpha: root ? getComputedStyle(root).getPropertyValue('--zhituan-alpha').trim() : null,
         bar: s.backgroundColor,
         // 顶栏的分隔线在下面，右栏的在左边
         hairline: bar.classList.contains('topbar') ? s.borderBottomColor : s.borderLeftColor,
@@ -941,7 +941,7 @@ const PAGE_MEASURE = `(() => {
      *           **相等就是没换上**：换上了一个字面，宽度就不会一样
      *
      * widths 量的是**拉丁词**而不是汉字。汉字在任何一个中文字体里都是 1em
-     * 见方（26px 的「摸鱼阅读」在哪一份字下都是 104px），拿它比宽窄问不出
+     * 见方（26px 的「纸团」在哪一份字下都是 104px），拿它比宽窄问不出
      * 任何事——上一轮量出三个 104 就是这么来的。拉丁字母的宽度逐字不同，
      * 衬线那份与两个兜底才会分开。
      */
@@ -951,10 +951,10 @@ const PAGE_MEASURE = `(() => {
       status: f.status
     })),
     displayLoaded: [...document.fonts].some(
-      (f) => f.family === 'Moyu Display Serif' && f.status === 'loaded'
+      (f) => f.family === 'Zhituan Display Serif' && f.status === 'loaded'
     ),
     displayVar: getComputedStyle(document.documentElement).getPropertyValue('--font-display').trim(),
-    displayCovers: document.fonts.check('26px "Moyu Display Serif"', '全部离线阅读'),
+    displayCovers: document.fonts.check('26px "Zhituan Display Serif"', '全部离线阅读'),
     displayWidths: (() => {
       const probe = document.createElement('span')
       probe.style.cssText =
@@ -967,15 +967,15 @@ const PAGE_MEASURE = `(() => {
       }
       const result = {
         latin: {
-          ours: width('Moyu', '"Moyu Display Serif"'),
-          fallbackSerif: width('Moyu', '"SimSun"'),
-          fallbackSans: width('Moyu', '"Microsoft YaHei"')
+          ours: width('Zhituan', '"Zhituan Display Serif"'),
+          fallbackSerif: width('Zhituan', '"SimSun"'),
+          fallbackSans: width('Zhituan', '"Microsoft YaHei"')
         },
         /* 汉字这一行只为留个底：三份必然相等，见上面那段说明 */
         han: {
-          ours: width('摸鱼阅读', '"Moyu Display Serif"'),
-          fallbackSerif: width('摸鱼阅读', '"SimSun"'),
-          fallbackSans: width('摸鱼阅读', '"Microsoft YaHei"')
+          ours: width('纸团', '"Zhituan Display Serif"'),
+          fallbackSerif: width('纸团', '"SimSun"'),
+          fallbackSans: width('纸团', '"Microsoft YaHei"')
         }
       }
       probe.remove()
@@ -995,7 +995,7 @@ const PAGE_MEASURE = `(() => {
  *
  * 要问的和 chrome 一样——底板淡了、字没淡——但这里还得额外确认一件事：
  * 面板窗口是透明的，底板真的淡下去时露出来的是桌面，因此这一份的数据
- * 必须来自面板这份文档自己写下的 --moyu-alpha，而不是从别处继承来的。
+ * 必须来自面板这份文档自己写下的 --zhituan-alpha，而不是从别处继承来的。
  */
 const POPOVER_MEASURE = `(() => {
   const box = (sel) => {
@@ -1011,7 +1011,7 @@ const POPOVER_MEASURE = `(() => {
     window: { w: window.innerWidth, h: window.innerHeight },
     kind: new URLSearchParams(location.search).get('kind'),
     // 写在文档根上的那个值；空串就意味着这份文档没写，底板不会淡
-    alpha: document.documentElement.style.getPropertyValue('--moyu-alpha'),
+    alpha: document.documentElement.style.getPropertyValue('--zhituan-alpha'),
     panel: box('.panel'),
     panelBg: s?.backgroundColor ?? null,
     panelBorder: s?.borderTopColor ?? null,
@@ -1205,8 +1205,8 @@ const DRAG_PROBE = `(() => {
       continue
     }
     const classes = typeof hit.className === 'string' ? hit.className.trim().split(/\\s+/).filter(Boolean) : []
-    const dragBefore = window.moyu.win.dragLog().starts
-    const resizeBefore = window.moyu.win.resizeLog()
+    const dragBefore = window.zhituan.win.dragLog().starts
+    const resizeBefore = window.zhituan.win.resizeLog()
     const base = {
       bubbles: true, cancelable: true, composed: true,
       button: 0, pointerId: 1, pointerType: 'mouse', isPrimary: true,
@@ -1214,8 +1214,8 @@ const DRAG_PROBE = `(() => {
     }
     hit.dispatchEvent(new PointerEvent('pointerdown', { ...base, buttons: 1 }))
     hit.dispatchEvent(new PointerEvent('pointerup', { ...base, buttons: 0 }))
-    const log = window.moyu.win.resizeLog()
-    const started = window.moyu.win.dragLog().starts > dragBefore
+    const log = window.zhituan.win.resizeLog()
+    const started = window.zhituan.win.dragLog().starts > dragBefore
     const resized = log.starts > resizeBefore.starts
     // 报上来的边名：这一点若起了缩放，就是最后一次记下的那一个
     const edge = resized ? log.edges[log.edges.length - 1] : null
@@ -1238,8 +1238,8 @@ const DRAG_PROBE = `(() => {
    * 界面给这类漏网准备了四道兜底（松手、窗口失焦、页面失焦、下一次按下重新锚定），
    * 而这里能把它查出来。缩放的两条路（开始 / 结束）同此。
    */
-  const log = window.moyu.win.dragLog()
-  const rlog = window.moyu.win.resizeLog()
+  const log = window.zhituan.win.dragLog()
+  const rlog = window.zhituan.win.resizeLog()
   return {
     points: results,
     handles,
@@ -1266,7 +1266,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
  */
 async function bodyRectOf(width, height) {
   const ROOT = path.join(__dirname, '..')
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-body-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-body-'))
   try {
     await esbuild.build({
       entryPoints: [
@@ -1307,7 +1307,7 @@ async function bodyRectOf(width, height) {
  */
 async function presetSitesOf() {
   const ROOT = path.join(__dirname, '..')
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-presets-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-presets-'))
   try {
     await esbuild.build({
       entryPoints: [path.join(ROOT, 'src', 'shared', 'presets.ts')],
@@ -1473,7 +1473,7 @@ app.whenReady().then(async () => {
      * topbar / rail 实测自相矛盾——而读这份 JSON 的人正是拿它当证据用的。
      */
     const live = await win.webContents
-      .executeJavaScript(`window.moyu.win.getState()`)
+      .executeJavaScript(`window.zhituan.win.getState()`)
       .catch(() => null)
     fs.writeFileSync(
       path.join(outDir, `${name}.json`),
@@ -1858,7 +1858,7 @@ app.whenReady().then(async () => {
     if (page === 'chrome' && has('--click-rail-pause')) {
       const railPause = async () =>
         run(`(async () => {
-          const cfg = await window.moyu.config.get()
+          const cfg = await window.zhituan.config.get()
           const b = document.querySelector('.rail button[title*="收起时暂停"]')
           return {
             value: cfg.stealth.muteMediaOnCollapse,
@@ -1971,15 +1971,15 @@ app.whenReady().then(async () => {
       await wait(50)
       const 拖动中 = await run(读)
       const 发出去的请求 = 键.读回
-        ? 键.读回(await run(`window.moyu.config.get()`))
-        : ((await run(`window.moyu.win.opacityLog().calls`)).slice(-1)[0] ?? null)
+        ? 键.读回(await run(`window.zhituan.config.get()`))
+        : ((await run(`window.zhituan.win.opacityLog().calls`)).slice(-1)[0] ?? null)
 
       await 按('pointerup')
       await wait(50)
       const 松手 = await run(读)
 
       // 广播一个别的值进来：走的是与真机同一条路（假桥的 patch 真的会广播）
-      await run(`window.moyu.config.patch(${键.广播(别的值 / 100)})`)
+      await run(`window.zhituan.config.patch(${键.广播(别的值 / 100)})`)
       await wait(250)
       const 模型换掉之后 = await run(读)
 
@@ -2037,7 +2037,7 @@ app.whenReady().then(async () => {
       const SETTINGS_KEY = '.topbar button[aria-label="系统设置"]'
       const readScreen = async () =>
         run(`(async () => {
-          const s = await window.moyu.tabs.list()
+          const s = await window.zhituan.tabs.list()
           const home = document.querySelector('${HOME_KEY}')
           const key = document.querySelector('${SETTINGS_KEY}')
           return {
@@ -2089,13 +2089,13 @@ app.whenReady().then(async () => {
       const SETTINGS_KEY = '.topbar button[aria-label="系统设置"]'
       const read = async () =>
         run(`(async () => {
-          const s = await window.moyu.tabs.list()
+          const s = await window.zhituan.tabs.list()
           return {
             停在哪一屏: s.screen,
             当前网页: s.activeTabId,
             按钮上写着: document.querySelector('${BODY} .title')?.textContent?.trim() ?? null,
             数字牌: document.querySelector('${BODY} .count')?.textContent?.trim() ?? null,
-            清单请求: window.moyu.ui.popoverLog().requests
+            清单请求: window.zhituan.ui.popoverLog().requests
           }
         })()`)
       const press = async (sel) => {

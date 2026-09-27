@@ -1,0 +1,253 @@
+/*
+ * 本机 EPUB 阅读页。
+ *
+ * 这一份只管**外面那一层**：滚动容器、纸、浮动读数、目录与排版面板。书自己的排版不在这里
+ * ——它落在 Shadow DOM 里，由 BookApp 往那个根上注入（见该文件的 DEFAULTS / CLEAR）。
+ *
+ * 纸为什么是一个独立的层而不是给容器加 opacity：opacity 会把字一起淡掉，而要淡的是
+ * 纸。这一条与 PDF 那一页共享同一句话，只是落点不同——那边纸是画布的 CSS 底色，
+ * 这边纸是我们自己的一层。实测（spike/book-page.js）：纸 0.5 时全透占比 0、平均 alpha
+ * 129，而**不透明像素占比一个都没变**（0.0055 → 0.0055），字确实没跟着动。
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+.book {
+  position: absolute;
+  inset: 0;
+  /* 底色不画：窗口本身是逐像素透明的，这一页要让桌面透过来 */
+  background: transparent;
+}
+
+/*
+ * 那张纸。
+ *
+ * 铺满整个视图而不是只铺正文区——它在字的**后面**，铺到哪里都不会盖住字，而
+ * 「纸比字宽」正是纸该有的样子（书页的留白比正文宽）。
+ *
+ * 不跟着正文滚：所以它是绝对定位的兄弟节点，不是 stage 的子节点。
+ */
+.paper {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: auto;
+  /* 滚动条藏起来：这一页是「浮在桌面上的一叠纸」，一条灰色的槽会把它拆穿 */
+  scrollbar-width: none;
+}
+
+.stage::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * 章节的宿主。Shadow DOM 挂在它上面，书的样式进不到这一层来，我们外面这些规则
+ * 也进不去——隔离是双向的，这正是要它。
+ */
+.sheet {
+  display: block;
+  /* 可选中：摸鱼的时候想把一段话拷出来，不该被拦 */
+  user-select: text;
+}
+
+.note {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  max-width: 76%;
+  color: var(--zhituan-text-dim);
+  font: 13px/1.7 var(--zhituan-font);
+  text-align: center;
+}
+
+/*
+ * 右下角那条浮层。
+ *
+ * 与 PDF 那一页同样的做法：尺寸都按 --zhituan-zoom 除回去，于是它在任何缩放档下
+ * 都是同一副大小（整份文档都在缩放里，一段写死 13px 的字在 200% 下是 26px）。
+ */
+.hud {
+  position: fixed;
+  right: calc(12px / var(--zhituan-zoom, 1));
+  bottom: calc(12px / var(--zhituan-zoom, 1));
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: calc(4px / var(--zhituan-zoom, 1));
+  padding: 0 calc(4px / var(--zhituan-zoom, 1));
+  height: calc(26px / var(--zhituan-zoom, 1));
+  border-radius: 999px;
+  background: var(--zhituan-surface-active);
+  color: var(--zhituan-text-dim);
+  font-family: var(--zhituan-font);
+  font-size: calc(12px / var(--zhituan-zoom, 1));
+  line-height: 1;
+  transition: opacity 220ms ease-out;
+  /* 它只是读数与两枚键，底下的正文照旧要能滚、能选 */
+  pointer-events: none;
+}
+
+/* 退开之后就连点都点不到了：一片看不见的按钮比没有按钮更坏 */
+.hud.off,
+.hud.off .hud__key {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hud__count {
+  padding: 0 calc(8px / var(--zhituan-zoom, 1));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hud__key {
+  pointer-events: auto;
+  height: calc(20px / var(--zhituan-zoom, 1));
+  padding: 0 calc(9px / var(--zhituan-zoom, 1));
+  border-radius: 999px;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.hud__key:hover,
+.hud__key.on {
+  background: var(--zhituan-accent-soft);
+  color: var(--zhituan-accent);
+}
+
+/*
+ * 目录面板。
+ *
+ * 从右下角那条浮层的上方展开，而不是从左边推一栏出来：这一页的宽度就是窗口的宽度
+ * （有时只有 300px），推栏会把正文挤没。面板是**盖**上去的，字号与行距按可读性给，
+ * 不跟着正文缩放——它不是正文。
+ */
+.toc {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 4;
+  width: min(320px, calc(100vw - 20px));
+  max-height: min(60vh, 420px);
+  overflow: auto;
+  padding: 6px;
+  border-radius: var(--zhituan-radius, 10px);
+  background: var(--zhituan-panel);
+  border: 1px solid var(--zhituan-hairline);
+  font-family: var(--zhituan-font);
+  scrollbar-width: thin;
+}
+
+.toc__item {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--zhituan-text-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: left;
+  /* 目录的长条目要能折行，但不要撑破面板 */
+  word-break: break-word;
+}
+
+.toc__item:hover {
+  background: var(--zhituan-surface-hover);
+  color: var(--zhituan-text);
+}
+
+.toc__item.on {
+  background: var(--zhituan-accent-soft);
+  color: var(--zhituan-accent);
+}
+
+.toc__empty {
+  padding: 10px 8px;
+  color: var(--zhituan-text-faint);
+  font-size: 12.5px;
+}
+
+/*
+ * 排版面板。
+ *
+ * 与目录同一个位置、同一套材料（浮在右下角那条浮层的上方、盖在正文上），
+ * 因为两者不会同时打开（见 BookApp 的 toggleTypeset / toggleToc）。
+ *
+ * 里面三条是**横向**滑块：这一页不像右栏那样只有 48px 宽，没有理由再把横条转 90°
+ * 摆（那一套见 chrome/OpacitySlider.vue）。控件也不跟着正文缩放（不用
+ * `/ var(--zhituan-zoom)`）——它不是正文，而一个在 200% 缩放下变成巨物的滑块
+ * 一样不好用，这与目录面板的选择一致。
+ */
+.typeset {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 4;
+  width: min(300px, calc(100vw - 20px));
+  padding: 8px 12px 10px;
+  border-radius: var(--zhituan-radius, 10px);
+  background: var(--zhituan-panel);
+  border: 1px solid var(--zhituan-hairline);
+  font-family: var(--zhituan-font);
+}
+
+.typeset__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+}
+
+.typeset__label {
+  flex: 0 0 auto;
+  width: 2.6em;
+  color: var(--zhituan-text-dim);
+  font-size: 12.5px;
+}
+
+/*
+ * range 的轨道与圆点都得自己画：`appearance: none` 之后浏览器不再给它们样式。
+ * 轨道画在 runnable-track 上（不是 input 的背景），圆点靠负 margin 挪到轨道中央。
+ */
+.typeset__range {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+.typeset__range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--zhituan-hairline);
+}
+
+.typeset__range::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-top: -4.5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--zhituan-accent);
+}
+
+.typeset__value {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  color: var(--zhituan-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}

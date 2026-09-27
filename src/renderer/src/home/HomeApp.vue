@@ -62,9 +62,9 @@ const { h: pageH } = useBox(page)
 const compact = computed(() => pageH.value < 360)
 
 onMounted(async () => {
-  config.value = await window.moyu.config.get()
+  config.value = await window.zhituan.config.get()
   applyTheme(config.value.ui.homeTheme)
-  offConfig = window.moyu.config.onChanged((next) => {
+  offConfig = window.zhituan.config.onChanged((next) => {
     config.value = next
     // 主题也可能是在系统设置里改的，那条路上只有这条广播会通知到这里
     applyTheme(next.ui.homeTheme)
@@ -86,8 +86,8 @@ onMounted(async () => {
     tabsSeen = true
   }
   await reload()
-  applyTabs(await window.moyu.tabs.list())
-  offTabs = window.moyu.tabs.onState(applyTabs)
+  applyTabs(await window.zhituan.tabs.list())
+  offTabs = window.zhituan.tabs.onState(applyTabs)
 })
 
 onUnmounted(() => {
@@ -96,13 +96,13 @@ onUnmounted(() => {
 })
 
 async function refreshHistory(): Promise<void> {
-  history.value = await window.moyu.history.list({ limit: 200 })
+  history.value = await window.zhituan.history.list({ limit: 200 })
 }
 
 async function reload(): Promise<void> {
   const [sites, marks] = await Promise.all([
-    window.moyu.sites.list(),
-    window.moyu.bookmarks.list()
+    window.zhituan.sites.list(),
+    window.zhituan.bookmarks.list()
   ])
   mySites.value = sites
   bookmarks.value = marks
@@ -184,7 +184,7 @@ function movePlate(delta: number): void {
  * 起始页始终留在原处，新站点另开一张标签页。
  */
 function open(url: string): void {
-  void window.moyu.tabs.create({ url, activate: true })
+  void window.zhituan.tabs.create({ url, activate: true })
 }
 
 /**
@@ -217,7 +217,7 @@ function resume(): void {
  * 让「离线阅读」那一栏立刻多出这一本，而不是等下一趟广播。
  */
 async function openFile(): Promise<void> {
-  const names = await window.moyu.files.openLocal()
+  const names = await window.zhituan.files.openLocal()
   if (!names.length) return
   await refreshHistory()
 }
@@ -246,7 +246,7 @@ function applyTheme(next: HomeTheme): void {
  */
 function pickTheme(next: HomeTheme): void {
   applyTheme(next)
-  void window.moyu.config.patch({ ui: { homeTheme: next } })
+  void window.zhituan.config.patch({ ui: { homeTheme: next } })
 }
 </script>
 

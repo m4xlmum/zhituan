@@ -252,7 +252,7 @@ function onRootClick(event: MouseEvent): void {
   >
     <header class="bar">
       <span :class="terminal ? 'ident' : 'wordmark'">{{
-        terminal ? 'MOYU-READER' : '摸鱼阅读'
+        terminal ? 'ZHITUAN' : '纸团'
       }}</span>
       <span class="meta tnum">
         {{ terminal ? `TABS ${tabCount}` : `标签 ${tabCount}` }}

@@ -15,7 +15,7 @@ type Kind = 'sites' | 'history' | 'bookmarks' | 'uaZoom' | 'tabs'
 const kind = (new URLSearchParams(location.search).get('kind') ?? 'sites') as Kind
 
 /**
- * 面板是另一扇窗、另一份文档，顶栏那棵树上写的 --moyu-alpha 传不过来，
+ * 面板是另一扇窗、另一份文档，顶栏那棵树上写的 --zhituan-alpha 传不过来，
  * 因此这里自己把背景透明度读一遍。面板窗口是透明的，底板变淡就真的透出桌面。
  * 写在哪一层有讲究，见 useBackgroundAlpha。
  */
@@ -47,19 +47,19 @@ let unsubscribeTabs: (() => void) | null = null
  * 不然它什么都不做。走的还是那条「用户自己收」的路，焦点跟着回主窗口。
  */
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') void window.moyu.ui.closePopover()
+  if (event.key === 'Escape') void window.zhituan.ui.closePopover()
 }
 
 onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
-  const tabsState = await window.moyu.tabs.list()
+  const tabsState = await window.zhituan.tabs.list()
   activeTabId.value = tabsState.activeTabId
   tabList.value = tabsState.tabs
   const current = tabsState.tabs.find((t) => t.id === tabsState.activeTabId)
   uaMode.value = current?.uaMode ?? 'desktop'
 
   // 标签页清单打开期间标题、顺序都可能变，跟着主进程的推送走
-  unsubscribeTabs = window.moyu.tabs.onState((payload) => {
+  unsubscribeTabs = window.zhituan.tabs.onState((payload) => {
     tabList.value = payload.tabs
     activeTabId.value = payload.activeTabId
   })
@@ -74,12 +74,12 @@ onUnmounted(() => {
 
 async function refreshAll(): Promise<void> {
   if (kind === 'sites') {
-    mySites.value = await window.moyu.sites.list()
-    presets.value = await window.moyu.sites.presets()
+    mySites.value = await window.zhituan.sites.list()
+    presets.value = await window.zhituan.sites.presets()
   } else if (kind === 'history') {
-    history.value = await window.moyu.history.list({ query: query.value, limit: 200 })
+    history.value = await window.zhituan.history.list({ query: query.value, limit: 200 })
   } else if (kind === 'bookmarks') {
-    bookmarks.value = await window.moyu.bookmarks.list({ query: query.value })
+    bookmarks.value = await window.zhituan.bookmarks.list({ query: query.value })
   }
 }
 
@@ -91,40 +91,40 @@ async function refreshAll(): Promise<void> {
  * 要的当然是看到那一页，而不是「什么也没发生」。
  */
 function open(url: string): void {
-  void window.moyu.nav.goto({ tabId: activeTabId.value, input: url })
-  void window.moyu.ui.closePopover()
+  void window.zhituan.nav.goto({ tabId: activeTabId.value, input: url })
+  void window.zhituan.ui.closePopover()
 }
 
 /** 切到某个标签页。面板随即收起，用户的注意力该回到网页上 */
 function selectTab(tabId: string): void {
-  void window.moyu.tabs.activate({ tabId })
-  void window.moyu.ui.closePopover()
+  void window.zhituan.tabs.activate({ tabId })
+  void window.zhituan.ui.closePopover()
 }
 
 function closeTab(tabId: string, event: MouseEvent): void {
   event.stopPropagation()
-  void window.moyu.tabs.close({ tabId })
+  void window.zhituan.tabs.close({ tabId })
 }
 
 async function addSite(): Promise<void> {
   const url = newSiteUrl.value.trim()
   if (!url) return
-  mySites.value = await window.moyu.sites.add({ url })
+  mySites.value = await window.zhituan.sites.add({ url })
   newSiteUrl.value = ''
 }
 
 async function removeSite(id: string, event: MouseEvent): Promise<void> {
   event.stopPropagation()
-  mySites.value = await window.moyu.sites.remove({ id })
+  mySites.value = await window.zhituan.sites.remove({ id })
 }
 
 async function removeBookmark(id: string, event: MouseEvent): Promise<void> {
   event.stopPropagation()
-  bookmarks.value = await window.moyu.bookmarks.remove({ id })
+  bookmarks.value = await window.zhituan.bookmarks.remove({ id })
 }
 
 async function clearHistory(): Promise<void> {
-  await window.moyu.history.clear()
+  await window.zhituan.history.clear()
   history.value = []
 }
 
@@ -137,13 +137,13 @@ function setUa(mode: 'desktop' | 'mobile'): void {
   const tabId = activeTabId.value
   if (!tabId) return
   uaMode.value = mode
-  void window.moyu.page.setUa({ tabId, mode })
+  void window.zhituan.page.setUa({ tabId, mode })
 }
 
 function zoom(op: 'in' | 'out' | 'reset'): void {
   const tabId = activeTabId.value
   if (!tabId) return
-  void window.moyu.page.setZoom({ tabId, op })
+  void window.zhituan.page.setZoom({ tabId, op })
 }
 </script>
 
@@ -246,11 +246,11 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: var(--moyu-surface);
-  border: 1px solid var(--moyu-border);
-  border-radius: var(--moyu-radius);
+  background: var(--zhituan-surface);
+  border: 1px solid var(--zhituan-border);
+  border-radius: var(--zhituan-radius);
   overflow: hidden;
-  color: var(--moyu-text);
+  color: var(--zhituan-text);
 }
 
 .head {
@@ -258,7 +258,7 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  border-bottom: 1px solid var(--moyu-border);
+  border-bottom: 1px solid var(--zhituan-border);
 }
 
 .title {
@@ -272,9 +272,9 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
   height: 22px;
   padding: 0 7px;
   background: rgba(0, 0, 0, 0.28);
-  border: 1px solid var(--moyu-border);
-  border-radius: var(--moyu-radius-sm);
-  color: var(--moyu-text);
+  border: 1px solid var(--zhituan-border);
+  border-radius: var(--zhituan-radius-sm);
+  color: var(--zhituan-text);
   outline: none;
 }
 
@@ -286,7 +286,7 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
 
 .section {
   padding: 8px 6px 4px;
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
   font-size: 11px;
 }
 
@@ -295,18 +295,18 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
-  border-radius: var(--moyu-radius-sm);
+  border-radius: var(--zhituan-radius-sm);
   cursor: pointer;
 }
 
 .row:hover {
-  background: var(--moyu-surface-hover);
+  background: var(--zhituan-surface-hover);
 }
 
 /* 当前正在看的那个标签页，一眼看得出来是它 */
 .row.active {
-  background: var(--moyu-surface-active);
-  color: var(--moyu-ink);
+  background: var(--zhituan-surface-active);
+  color: var(--zhituan-ink);
 }
 
 .row-title {
@@ -318,19 +318,19 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
 
 .tag {
   flex: 0 0 auto;
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
   font-size: 11px;
 }
 
 .mini {
   flex: 0 0 auto;
   padding: 1px 5px;
-  border-radius: var(--moyu-radius-sm);
-  color: var(--moyu-text-faint);
+  border-radius: var(--zhituan-radius-sm);
+  color: var(--zhituan-text-faint);
 }
 
 .mini:hover {
-  color: var(--moyu-danger);
+  color: var(--zhituan-danger);
 }
 
 .add {
@@ -342,14 +342,14 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
   height: 26px;
   padding: 0 8px;
   background: rgba(0, 0, 0, 0.28);
-  border: 1px solid var(--moyu-border);
-  border-radius: var(--moyu-radius-sm);
-  color: var(--moyu-text);
+  border: 1px solid var(--zhituan-border);
+  border-radius: var(--zhituan-radius-sm);
+  color: var(--zhituan-text);
   outline: none;
 }
 
 .add input:focus {
-  border-color: var(--moyu-accent);
+  border-color: var(--zhituan-accent);
 }
 
 .segmented {
@@ -361,24 +361,24 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
 .segmented button {
   flex: 1 1 0;
   height: 26px;
-  border-radius: var(--moyu-radius-sm);
+  border-radius: var(--zhituan-radius-sm);
   background: rgba(0, 0, 0, 0.24);
-  color: var(--moyu-text-dim);
+  color: var(--zhituan-text-dim);
 }
 
 .segmented button:hover {
-  background: var(--moyu-surface-hover);
-  color: var(--moyu-text);
+  background: var(--zhituan-surface-hover);
+  color: var(--zhituan-text);
 }
 
 .segmented button.on {
-  background: var(--moyu-surface-active);
-  color: var(--moyu-accent);
+  background: var(--zhituan-surface-active);
+  color: var(--zhituan-accent);
 }
 
 .hint {
   margin: 6px 8px 0;
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -386,6 +386,6 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
 .empty {
   padding: 24px 8px;
   text-align: center;
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
 }
 </style>

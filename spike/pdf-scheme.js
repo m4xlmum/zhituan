@@ -5,8 +5,8 @@
  * 与 SVG 滤镜都落不到它头上（0/120000 个透明像素）。这一版换成自家阅读页，因此
  * 这一支探针要证的是一条**完整的链**，链上每一环都得自己说话：
  *
- *   Q1  通道本身：`moyu-pdf://doc/<token>` 取字节（整份 + Range 三种写法）、
- *       `moyu-pdf://asset/…` 取资源（内容类型、wasm 的魔术字）、以及两条「不许」：
+ *   Q1  通道本身：`zhituan-pdf://doc/<token>` 取字节（整份 + Range 三种写法）、
+ *       `zhituan-pdf://asset/…` 取资源（内容类型、wasm 的魔术字）、以及两条「不许」：
  *       目录白名单之外的 404、`..` 穿目录的 400。
  *   Q2  页面真的把书取到手并画出来了：HUD 上那行「n / 总页」、画布尺寸、
  *       fit-width（画布的 CSS 宽 == 正文区宽）。
@@ -23,7 +23,7 @@
  *   Q6  缩放：右栏那条缩放改的是 zoomLevel，页面得跟着重排而不是被拉大
  *       （画布设备像素宽 ×1.2，而 CSS 宽度不变）。
  *   Q7  CSP 一条都没报：这一页的 CSP 比别的页多三条放行（wasm、blob worker、
- *       moyu-pdf:），漏一条就会在运行时被拦下来，而**被拦下来是不出声的**。
+ *       zhituan-pdf:），漏一条就会在运行时被拦下来，而**被拦下来是不出声的**。
  *   Q8  preload 到手了（这一页要读配置才画得出那张纸的透明度），且页面里没有异常。
  *   Q9  阅读透明度（配置 ui.readerOpacity，右栏第三条滑块）：它调的是**纸**，
  *       值 v 对应纸的 alpha = 1 − v。三处一起问：页面里画布自己的 opacity 恒是 1、
@@ -69,7 +69,7 @@ const args = process.argv.slice(2).filter((a) => !a.startsWith('--'))
 const BOOK = args[0] ?? 'panel'
 
 /**
- * 主题层里那三份墨色（themes.css 的 --moyu-ink）。
+ * 主题层里那三份墨色（themes.css 的 --zhituan-ink）。
  *
  * PAPER 是这一页**该有**的那一份（`:root`，纸白）；NIGHT 与 GREEN 是另外两套主题
  * 自己的墨色，Q4 拿它们当**反面**：推了那两套配置之后，这一页上一个近 NIGHT、
@@ -142,7 +142,7 @@ function buildStage() {
   // 应用目录该有的样子：一份 package.json，一份 main，一条指回仓库的 node_modules
   fs.writeFileSync(
     path.join(STAGE, 'package.json'),
-    JSON.stringify({ name: 'moyu-pdf-scheme-probe', version: '0.0.0', main: 'probe.cjs' }, null, 2)
+    JSON.stringify({ name: 'zhituan-pdf-scheme-probe', version: '0.0.0', main: 'probe.cjs' }, null, 2)
   )
   fs.writeFileSync(path.join(STAGE, 'probe.cjs'), 'require(process.env.PDF_SCHEME_PROBE)\n')
   const link = path.join(STAGE, 'node_modules')
@@ -200,7 +200,7 @@ try {
 }
 
 // 注册特权协议必须在 ready 之前；显示名与主程序一致，userData 才不会另起一处
-app.setName('moyu-reader')
+app.setName('zhituan')
 mods.pdf.registerPdfScheme()
 
 // ------------------------------------------------------------------ 读页面
@@ -258,10 +258,10 @@ async function readPage(win, ink) {
         hud: (document.querySelector('.hud__count') || {}).textContent || null,
         keys: [...document.querySelectorAll('.hud__key')].map((b) => b.textContent.trim()),
         theme: document.documentElement.dataset.theme || null,
-        ink: root.getPropertyValue('--moyu-ink').trim(),
-        zoom: parseFloat(root.getPropertyValue('--moyu-zoom')) || 1,
+        ink: root.getPropertyValue('--zhituan-ink').trim(),
+        zoom: parseFloat(root.getPropertyValue('--zhituan-zoom')) || 1,
         dpr: devicePixelRatio,
-        hasApi: typeof window.moyu === 'object' && window.moyu !== null,
+        hasApi: typeof window.zhituan === 'object' && window.zhituan !== null,
         note: (document.querySelector('.note') || {}).textContent || null
       }
     })()`,
@@ -304,7 +304,7 @@ async function run(book) {
   ipcMain.handle(mods.ipc.INVOKE.configGet, () => cfg)
 
   // -------------------------------------------------------------- Q1 通道
-  const doc = `moyu-pdf://doc/${token}`
+  const doc = `zhituan-pdf://doc/${token}`
   const whole = await ses.fetch(doc)
   const wholeBytes = Buffer.from(await whole.arrayBuffer())
   ok(
@@ -334,9 +334,9 @@ async function run(book) {
     )
   }
 
-  const cmap = await ses.fetch('moyu-pdf://asset/cmaps/UniGB-UCS2-H.bcmap')
+  const cmap = await ses.fetch('zhituan-pdf://asset/cmaps/UniGB-UCS2-H.bcmap')
   const cmapBytes = Buffer.from(await cmap.arrayBuffer())
-  const wasm = await ses.fetch('moyu-pdf://asset/wasm/jbig2.wasm')
+  const wasm = await ses.fetch('zhituan-pdf://asset/wasm/jbig2.wasm')
   const wasmBytes = Buffer.from(await wasm.arrayBuffer())
   ok(
     'Q1c asset 资源',
@@ -348,9 +348,9 @@ async function run(book) {
     `cmap ${cmap.status}/${cmapBytes.length} 字节；wasm ${wasm.status}/${wasm.headers.get('content-type')}/${wasmBytes.length} 字节，魔术字 ${wasmBytes.subarray(0, 4).toString('hex')}`
   )
 
-  const escape = await ses.fetch('moyu-pdf://asset/cmaps/../../../package.json')
-  const outside = await ses.fetch('moyu-pdf://asset/build/pdf.mjs')
-  const unknown = await ses.fetch('moyu-pdf://doc/00000000-0000-0000-0000-000000000000')
+  const escape = await ses.fetch('zhituan-pdf://asset/cmaps/../../../package.json')
+  const outside = await ses.fetch('zhituan-pdf://asset/build/pdf.mjs')
+  const unknown = await ses.fetch('zhituan-pdf://doc/00000000-0000-0000-0000-000000000000')
   ok(
     'Q1d 该挡的挡住',
     escape.status === 400 && outside.status === 404 && unknown.status === 404,
@@ -479,7 +479,7 @@ async function run(book) {
       Math.abs(ratio - 1.2) < 0.05 &&
       Math.abs(zoomed.cssW - was.cssW) <= 2 &&
       zoomed.stageScrollW > zoomed.stageW,
-    `dpr ${was.dpr} → ${zoomed.dpr}，画布宽 ${was.w} → ${zoomed.w}（×${ratio.toFixed(3)}），CSS 宽 ${was.cssW} → ${zoomed.cssW}，--moyu-zoom ${was.zoom} → ${zoomed.zoom}，正文区 ${zoomed.stageScrollW}/${zoomed.stageW}`
+    `dpr ${was.dpr} → ${zoomed.dpr}，画布宽 ${was.w} → ${zoomed.w}（×${ratio.toFixed(3)}），CSS 宽 ${was.cssW} → ${zoomed.cssW}，--zhituan-zoom ${was.zoom} → ${zoomed.zoom}，正文区 ${zoomed.stageScrollW}/${zoomed.stageW}`
   )
   win.webContents.zoomLevel = 0
 
@@ -674,7 +674,7 @@ async function run(book) {
   ok(
     'Q8 preload 与页面状态',
     !!first && first.hasApi === true && !failed && complaints.length === 0,
-    `window.moyu ${first?.hasApi}，加载 ${failed ?? '没失败'}，控制台 ${complaints.length} 条：${complaints.join(' | ').slice(0, 300)}`
+    `window.zhituan ${first?.hasApi}，加载 ${failed ?? '没失败'}，控制台 ${complaints.length} 条：${complaints.join(' | ').slice(0, 300)}`
   )
 
   fs.writeFileSync(

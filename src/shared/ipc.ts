@@ -164,7 +164,16 @@ export const SEND = {
    * 缩到球身上，因此必须由渲染进程把量到的矩形报上来。在别处重算一遍
    * 球的位置等于把版面规则抄成两份，迟早会差出几个像素。
    */
-  setBallRect: 'window:setBallRect'
+  setBallRect: 'window:setBallRect',
+  /**
+   * 报一次读到哪儿了（本机 EPUB）。
+   *
+   * 走单向消息而不是 invoke：一次会话里会报很多次（翻章、停滚、关页），而这件事
+   * **没有回话要听**——主进程拿去合并落盘，阅读页不需要任何人确认，与拖动、缩放
+   * 是同一条道理。位置由阅读页自己量（只有它知道章内比例），主进程只把这串 token
+   * 换算成本机路径再记下来（见 services/bookReader.ts 的 rememberReading）。
+   */
+  bookReading: 'book:reading'
 } as const
 
 export type InvokeChannel = (typeof INVOKE)[keyof typeof INVOKE]
@@ -212,7 +221,7 @@ export interface ChromePatch {
  * 预加载暴露给渲染进程的 API 形状。
  * 这是渲染进程能触碰的全部主进程能力，不做任何额外暴露。
  */
-export interface MoyuApi {
+export interface ZhituanApi {
   config: {
     get(): Promise<AppConfig>
     patch(patch: ConfigPatch): Promise<AppConfig>
@@ -373,6 +382,20 @@ export interface MoyuApi {
    */
   files: {
     openLocal(): Promise<string[]>
+  }
+  /**
+   * 本机 EPUB 的阅读位置。
+   *
+   * 只有「记」没有「读」：**上次读到哪儿，是主进程开这一页时就写进地址里的**
+   * （`book.html?doc=…&at=…&ratio=…`，见 services/bookReader.ts 的 bookReaderUrl），
+   * 于是阅读页打开的那一刻就是对的姿势，不必先问一次、再闪一下。
+   *
+   * 位置由**阅读页**给：章内比例只有量过滚动高度的那一边才知道；而把 token 换成
+   * 哪一本书，只有主进程知道（路径不出主进程）。
+   */
+  book: {
+    /** 报一次位置。单向、不等回执，主进程那一侧合并落盘 */
+    remember(input: { token: string; chapter: string; ratio: number }): void
   }
   /**
    * 检查更新。

@@ -16,13 +16,13 @@ export function useTabs() {
   let unsubscribe: (() => void) | null = null
 
   onMounted(async () => {
-    const initial = await window.moyu.tabs.list()
+    const initial = await window.zhituan.tabs.list()
     tabs.value = initial.tabs
     activeTabId.value = initial.activeTabId
     screen.value = initial.screen
     lastTabId.value = initial.lastTabId
 
-    unsubscribe = window.moyu.tabs.onState((payload) => {
+    unsubscribe = window.zhituan.tabs.onState((payload) => {
       tabs.value = payload.tabs
       activeTabId.value = payload.activeTabId
       screen.value = payload.screen

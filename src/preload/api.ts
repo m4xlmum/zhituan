@@ -10,7 +10,7 @@ import { ipcRenderer } from 'electron'
 import { BROADCAST, INVOKE, SEND } from '@shared/ipc'
 import type {
   ConfigPatch,
-  MoyuApi,
+  ZhituanApi,
   OpenPopoverRequest,
   TabsStatePayload
 } from '@shared/ipc'
@@ -35,7 +35,7 @@ function on<T>(channel: string, cb: (payload: T) => void): () => void {
   }
 }
 
-export const api: MoyuApi = {
+export const api: ZhituanApi = {
   config: {
     get: () => ipcRenderer.invoke(INVOKE.configGet) as Promise<AppConfig>,
     patch: (patch: ConfigPatch) => ipcRenderer.invoke(INVOKE.configPatch, patch) as Promise<AppConfig>,
@@ -161,6 +161,14 @@ export const api: MoyuApi = {
   // 离线阅读：选中的本机文件由主进程开成普通的网页标签，回来的是文件名
   files: {
     openLocal: () => ipcRenderer.invoke(INVOKE.fileOpenLocal) as Promise<string[]>
+  },
+
+  // 本机 EPUB 的阅读位置。单向发出去就完事：主进程侧合并落盘，
+  // 而「上次读到哪」是它开这一页时写进地址里的（见 @shared/ipc 的 ZhituanApi.book）
+  book: {
+    remember: (input) => {
+      ipcRenderer.send(SEND.bookReading, input)
+    }
   },
 
   update: {

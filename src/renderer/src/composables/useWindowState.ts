@@ -11,8 +11,8 @@ export function useWindowState() {
   let unsubscribe: (() => void) | null = null
 
   onMounted(async () => {
-    state.value = await window.moyu.win.getState()
-    unsubscribe = window.moyu.win.onState((next) => {
+    state.value = await window.zhituan.win.getState()
+    unsubscribe = window.zhituan.win.onState((next) => {
       state.value = next
     })
   })
@@ -21,22 +21,22 @@ export function useWindowState() {
 
   /** 整个界面缩成悬浮球 */
   function collapse(): void {
-    void window.moyu.win.collapse()
+    void window.zhituan.win.collapse()
   }
 
   /** 从悬浮球展开回完整界面 */
   function expand(): void {
-    void window.moyu.win.expand()
+    void window.zhituan.win.expand()
   }
 
   /** 铺满当前显示器的整个工作区（两栏与地址栏随之让位） */
   function maximize(): void {
-    void window.moyu.win.maximize()
+    void window.zhituan.win.maximize()
   }
 
   /** 从最大化回到之前的 16:9 矩形 */
   function restore(): void {
-    void window.moyu.win.restore()
+    void window.zhituan.win.restore()
   }
 
   return { state, collapse, expand, maximize, restore }

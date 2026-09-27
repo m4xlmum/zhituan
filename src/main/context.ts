@@ -9,6 +9,7 @@ import type { BookmarkStore } from './services/bookmarkStore'
 import type { BossKeyService } from './services/bossKeyService'
 import type { ConfigStore } from './services/configStore'
 import type { HistoryStore } from './services/historyStore'
+import type { ReadingStore } from './services/readingStore'
 import type { SiteStore } from './services/siteStore'
 import type { TabManager } from './services/tabManager'
 import type { TrayService } from './services/trayService'
@@ -23,6 +24,8 @@ export interface AppContext {
   sites: SiteStore
   history: HistoryStore
   bookmarks: BookmarkStore
+  /** 本机 EPUB 读到哪儿了。按书的本机路径记，见 readingStore.ts */
+  reading: ReadingStore
   /** 用户上传的悬浮球图标。单独一个文件、单独一组通道，见 ballIconStore.ts */
   ballIcon: BallIconStore
   controller: WindowController

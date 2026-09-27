@@ -21,7 +21,9 @@
  *
  * 用法（改动展示面之后重跑，产物要一起提交）：
  *   node scripts/make-display-font.mjs
- * 依赖：python + fontTools + brotli（`pip install fonttools brotli`）。
+ * 依赖：一个装了 fontTools 与 brotli 的 python（`pip install fonttools brotli`）。
+ * PATH 上那个不一定装着（本机就不是），因此可以指名道姓：
+ *   PYTHON=/path/to/venv/bin/python node scripts/make-display-font.mjs
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -35,21 +37,30 @@ import { build } from 'esbuild'
 
 const require = createRequire(import.meta.url)
 const ROOT = resolve(import.meta.dirname, '..')
-const OUT_FONT = join(ROOT, 'src/renderer/src/assets/fonts/moyu-display-serif.woff2')
+const OUT_FONT = join(ROOT, 'src/renderer/src/assets/fonts/zhituan-display-serif.woff2')
 const OUT_LICENSE = join(ROOT, 'src/renderer/src/assets/fonts/OFL.txt')
 
 /** 上游：google/fonts 仓库里的可变字体（wght 200–900，默认 200）。改版本要连 OFL 一起核对 */
 const UPSTREAM_URL =
   'https://raw.githubusercontent.com/google/fonts/main/ofl/notoserifsc/NotoSerifSC%5Bwght%5D.ttf'
 const UPSTREAM_LICENSE_URL = 'https://raw.githubusercontent.com/google/fonts/main/ofl/notoserifsc/OFL.txt'
-const CACHE = join(homedir(), '.cache', 'moyu-reader-font')
+const CACHE = join(homedir(), '.cache', 'zhituan-font')
 const CACHED_FONT = join(CACHE, 'NotoSerifSC[wght].ttf')
+
+/**
+ * 跑 fontTools 的解释器。
+ *
+ * 不写死 `python`：PATH 上那个未必装着 fontTools（本机就是这样——系统 Python
+ * 没有，装了的那份在别的 venv 里），而报错会晚到 `fontTools.varLib` 那一行，
+ * 读起来像脚本坏了。装好依赖之后用 `PYTHON=/path/to/python node scripts/…` 指定。
+ */
+const PYTHON = process.env.PYTHON ?? 'python'
 
 /** 只保留这一段字重：报头用 700，栏目线用 400，两头都不需要 */
 const WEIGHT_RANGE = '400:700'
 
 /** 自己带的那份字叫什么。改名字见下面 NAMES 那一段脚本里的说明 */
-const FAMILY = 'Moyu Display Serif'
+const FAMILY = 'Zhituan Display Serif'
 
 /**
  * 改名字表。
@@ -89,10 +100,10 @@ font.save(dst)
 /**
  * 展示面上除栏目名之外还说的字。
  *
- * 标识：`摸鱼阅读`（StartPage.vue 的 .wordmark，现代世界那一支）。
- * 终端世界的标识是 `MOYU-READER`，那几个字母由下面的 ASCII 那一段覆盖。
+ * 标识：`纸团`（StartPage.vue 的 .wordmark，现代世界那一支）。
+ * 终端世界的标识是 `ZHITUAN`，那几个字母由下面的 ASCII 那一段覆盖。
  */
-const EXTRA = '摸鱼阅读'
+const EXTRA = '纸团'
 
 /** 拉丁与标点：展示面上未必说，但缺一个就回落，不如一次带齐 */
 const LATIN =
@@ -116,7 +127,7 @@ function sha256(file) {
 
 /** 真的那份 SECTIONS：把 TS 打成一包再 require，不抄一遍（探针用的也是这一手） */
 async function sections() {
-  const out = join(tmpdir(), `moyu-sections-${process.pid}.cjs`)
+  const out = join(tmpdir(), `zhituan-sections-${process.pid}.cjs`)
   await build({
     entryPoints: [join(ROOT, 'src/shared/constants.ts')],
     bundle: true,
@@ -167,10 +178,14 @@ async function main() {
   writeFileSync(renamePy, RENAME_PY, 'utf8')
 
   // 先把字重收到 400–700：轴上的变化数据跟字形数一起压缩，范围越窄产物越小
-  sh('python', ['-m', 'fontTools.varLib.instancer', CACHED_FONT, `wght=${WEIGHT_RANGE}`, '-o', limited])
-  sh('python', [renamePy, limited, named, FAMILY])
-  // 子集：名字表与 OFL（nameID 13/14）留着——许可随字走，不只是随仓库走
-  sh('pyftsubset', [
+  sh(PYTHON, ['-m', 'fontTools.varLib.instancer', CACHED_FONT, `wght=${WEIGHT_RANGE}`, '-o', limited])
+  sh(PYTHON, [renamePy, limited, named, FAMILY])
+  // 子集：名字表与 OFL（nameID 13/14）留着——许可随字走，不只是随仓库走。
+  // 走 `-m fontTools.subset` 而不是 `pyftsubset`：后者是一个控制台脚本，
+  // 只有装着 fontTools 的那个环境里才有，而前者在任何能 import 到它的解释器下都成立。
+  sh(PYTHON, [
+    '-m',
+    'fontTools.subset',
     named,
     `--text-file=${textFile}`,
     '--flavor=woff2',

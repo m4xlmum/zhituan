@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 import { app, BrowserWindow, type Session } from 'electron'
+import { cpSync, existsSync, renameSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { BROADCAST } from '@shared/ipc'
@@ -23,7 +24,13 @@ import { ConfigStore } from './services/configStore'
 import { HistoryStore } from './services/historyStore'
 import { initLogger, log } from './services/logger'
 import { PopoverWindowService } from './services/popoverWindow'
+import {
+  attachReadingStore,
+  registerBookProtocol,
+  registerBookScheme
+} from './services/bookReader'
 import { registerPdfProtocol, registerPdfScheme } from './services/pdfReader'
+import { ReadingStore } from './services/readingStore'
 import { rendererUrl } from './services/rendererUrl'
 import { hardenWebContents, setupSession } from './services/sessionSetup'
 import { SiteStore } from './services/siteStore'
@@ -36,10 +43,16 @@ import { WindowRegistry } from './services/windowRegistry'
 // 必须是模块体的第一条语句。
 // 注意 import 声明会被提升到它之前执行，所以上面那些模块都不能在
 // 被导入时读取 userData —— 它们只接收目录作为构造参数，正是为此。
-// Electron 的 userData 目录取自 app.getName()，打包后会变成 productName；
-// 若显示名用中文，目录就成了 %APPDATA%\摸鱼阅读，非 ASCII 路径会破坏
-// Chromium 的缓存与分区目录，且数据一旦落在那里很难迁回。
-app.setName('moyu-reader')
+// Electron 的 userData 目录取自 app.getName()。这里刻意用 ASCII 名，而不是
+// productName（纸团）：中文目录会破坏 Chromium 的缓存与分区目录，
+// 且数据一旦落在 %APPDATA%\纸团 里就很难迁回。
+app.setName('zhituan')
+
+// 更名之前那一版把数据写在 %APPDATA%\moyu-reader 下。setName 一改，userData
+// 就指向 %APPDATA%\zhituan，老配置、书签、站点与登录态会像凭空消失。因此做
+// 一次整目录搬运，条件卡得很死：**老目录还在、新目录还没建起来**——搬过一次
+// 之后这个条件再也不成立，不会重复搬，也就不需要另存一个版本号来记它。
+migrateLegacyUserData()
 
 // 窗口是置顶且透明的。Chromium 的原生遮挡检测可能判定它被遮挡而停止合成，
 // 表现为画面空白或闪烁，因此关闭该检测。
@@ -52,6 +65,48 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   bootstrap()
+}
+
+/**
+ * 更名（moyu-reader → zhituan）带来的一次性数据搬迁。
+ *
+ * 只在「老目录还在、新目录还没建起来」时动手——那是「第一次以新名字启动」
+ * 的唯一特征。路径用 appData 拼而不是 userData：后者此刻已经指向新目录，
+ * 拿它当判据等于自己把自己的条件废掉。
+ *
+ * ## 两步走：先拷到旁边，再改名过去
+ *
+ * 直接 `cpSync(legacy, current)` 有一个安静得可怕的坏法：**拷到一半失败时，
+ * 新目录已经建起来了**，而上面那句「新目录还没建起来」从此再也不成立——
+ * 于是下一次启动不重试，用户看到的是「配置、书签、登录态全没了」，而且再也不会
+ * 自己回来。这不是假想：一次探针启动（它只改了 userData，没改 appData）就留下过
+ * 一个只有 4 个条目的 `%APPDATA%\zhituan`——`ball-icon.json` 与 `bookmarks.json`
+ * 是完整副本，`config.json` 与 `history.json` 一个都没有，**而这足以把真正的搬迁
+ * 永久挡在门外**（见 docs/spike-findings.md 的 Q68）。
+ *
+ * 因此先拷进 `zhituan.migrating`：拷完才改名到正式名字。改名是原子的，于是
+ * 「新目录存在」这件事重新等于「搬迁已经完整做完」——失败就什么都不留，
+ * 下一次启动自动重试。
+ *
+ * 搬不动就按新装处理：丢的是配置与登录态，不是应用本身，因此这里一律不抛。
+ */
+function migrateLegacyUserData(): void {
+  try {
+    const appData = app.getPath('appData')
+    const legacy = join(appData, 'moyu-reader')
+    const current = join(appData, 'zhituan')
+    const staging = join(appData, 'zhituan.migrating')
+
+    if (!existsSync(legacy) || existsSync(current)) return
+
+    // 上一次也失败在改名之前，留下的那一份半成品要先清掉（否则 renameSync 会失败）
+    rmSync(staging, { recursive: true, force: true })
+    cpSync(legacy, staging, { recursive: true })
+    renameSync(staging, current)
+    log.info(`已将旧数据目录搬到新名字下：${legacy} → ${current}`)
+  } catch (error) {
+    log.warn(`旧数据目录迁移失败，按新装处理：${String(error)}`)
+  }
 }
 
 function bootstrap(): void {
@@ -68,6 +123,13 @@ function bootstrap(): void {
   const sites = new SiteStore(userDataDir)
   const history = new HistoryStore(userDataDir)
   const bookmarks = new BookmarkStore(userDataDir)
+  const reading = new ReadingStore(userDataDir)
+  /*
+   * 阅读位置这份账按**本机路径**记，而阅读页手里只有一个 token——两张表都在
+   * services/bookReader.ts 里，于是换算也交给它一处做完（见 rememberReading）。
+   * 换成别处再算一遍，等于把那两张表的作用域扩出去，迟早有人顺着它读路径。
+   */
+  attachReadingStore(reading)
   const ballIcon = new BallIconStore(userDataDir)
   const bossKeys = new BossKeyService()
 
@@ -75,9 +137,11 @@ function bootstrap(): void {
   // 因此这里只留一个占位，真正的创建放在 whenReady 内。
   let ses: Session | null = null
   hardenWebContents()
-  // 特权协议名只能在 app ready 之前声明；处理程序挂到分区会话上，
-  // 见 whenReady（那条协议是本机 PDF 的阅读页取字节与取资源的路）
+  // 特权协议名只能在 app ready 之前声明；处理程序挂到分区会话上，见 whenReady。
+  // 这两条是同一件事的两半：「自家的阅读页怎么拿到一本书的字节」——一个给 PDF，
+  // 一个给 EPUB。放在这里而不是各自模块的初始化里，是因为时机是 Electron 定的。
   registerPdfScheme()
+  registerBookScheme()
 
   function broadcast(channel: string, payload: unknown): void {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -255,7 +319,7 @@ function bootstrap(): void {
     feedBase: UPDATE_FEED_BASE,
     currentVersion: app.getVersion(),
     enabled: updateEnabled,
-    downloadDir: join(app.getPath('temp'), 'moyu-reader-update'),
+    downloadDir: join(app.getPath('temp'), 'zhituan-update'),
     onState: (state) => broadcast(BROADCAST.updateState, state),
     setNoticeVisible: (visible) => controller.setNoticeVisible(visible),
     quit: () => quit()
@@ -268,6 +332,7 @@ function bootstrap(): void {
     sites,
     history,
     bookmarks,
+    reading,
     ballIcon,
     controller,
     tabs,
@@ -304,10 +369,11 @@ function bootstrap(): void {
   app.whenReady().then(() => {
     // 持久化会话必须在这里创建：app ready 之前 session 模块不可用
     ses = setupSession()
-    // 本机 PDF 的资源通道挂在这个分区会话上（页面全都在它里面）
+    // 本机 PDF 与本机 EPUB 的资源通道都挂在这个分区会话上（页面全都在它里面）
     registerPdfProtocol(ses)
+    registerBookProtocol(ses)
 
-    electronApp.setAppUserModelId('com.m4xlmum.moyu-reader')
+    electronApp.setAppUserModelId('com.m4xlmum.zhituan')
     app.on('browser-window-created', (_e, win) => optimizer.watchWindowShortcuts(win))
 
     registerDataIpc(ctx)
@@ -383,6 +449,8 @@ function bootstrap(): void {
     sites.flush()
     history.flush()
     bookmarks.flush()
+    // 阅读位置是去抖写入的：最后那一次翻页多半还没落盘，走之前把它写下去
+    reading.flush()
   })
 
   app.on('will-quit', () => {

@@ -80,7 +80,7 @@ function record(id, question, verdict, detail) {
 
 /** 把要用的几份 TS 各打成一包再 require。理由与 window-max.js 同：验真的，不验抄本 */
 async function buildModules() {
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-layer-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-layer-'))
   await esbuild.build({
     entryPoints: [
       path.join(ROOT, 'src', 'main', 'services', 'windowController.ts'),
@@ -109,7 +109,7 @@ async function buildModules() {
 
 /** 一页本地网页，tag 用来在场上的几份文档里认出它 */
 function writePage(tag) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `moyu-layer-${tag}-`))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `zhituan-layer-${tag}-`))
   const file = path.join(dir, 'page.html')
   fs.writeFileSync(
     file,
@@ -150,7 +150,7 @@ async function main() {
   const weread = writePage('weread')
   const douyin = writePage('douyin')
 
-  const config = new ConfigStore(fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-layer-config-')))
+  const config = new ConfigStore(fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-layer-config-')))
   const displays = screen.getAllDisplays()
   config.set((c) => ({
     ...c,
@@ -173,7 +173,7 @@ async function main() {
     lastSession: { openUrls: [weread, douyin], activeIndex: 0 }
   }))
 
-  const ses = session.fromPartition('moyu-layer-probe')
+  const ses = session.fromPartition('zhituan-layer-probe')
   // 自家页面带着 preview-preload 进来，那份假桥要问主进程要一组「预览参数」
   ipcMain.on('preview:options', (event) => {
     event.returnValue = {

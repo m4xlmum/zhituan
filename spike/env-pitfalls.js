@@ -14,6 +14,26 @@
  * 第 4 条（没人接的 promise 拒绝不会带走进程）没法在这个进程里顺手验，
  * 单独一支：npx electron spike/swallow.js
  *
+ * **第 5 条只改 `userData` 挡不住改名搬迁**也没法在这里验（它要起重真主进程），
+ * 但那一条比上面四条都贵：一次跑动就可能在用户的真目录上留下半个数据目录，
+ * 而那个半成品会**永久挡掉**用户自己的数据。凡是要 `require` 真主进程的探针
+ * （`live-app.js` / `book-tab.js`），必须**同时**把 `appData` 与 `userData`
+ * 指到临时目录，理由与现场见 docs/spike-findings.md 的 Q68。
+ *
+ * **第 6 条：临时 userData 得自己收走——而在 Windows 上，「退出时自己删」做不到。**
+ * 这一条是第 5 条那份「给真主进程用的临时目录」的附带代价：探针跑完不删，
+ * 跑一趟留一份（2026-09-27 本机一天攒下 6 份、约 350MB），而被 `timeout` 收走
+ * 的跑法又占多数（探针跑完不会自己退出，Electron 主进程还在）。**在退出前
+ * `rmSync` 会失败**：进程还活着时它自己那些 `Cache` / `Code Cache` 目录动不了
+ * （`EBUSY` / `EPERM`），而**同一个目录在进程退出之后从外面一次就删干净了**
+ * ——不是权限问题，是「自己删自己」在 Windows 上不成立。
+ *
+ * 因此改在**开工前清旧的**：`spike/probe-temp.cjs` 的 `makeTempUserData()` 扫出
+ * 同前缀、且早于 1 小时的目录删掉（1 小时这道门槛保证碰不到正在跑的那一份：
+ * 本项目最长的一支探针三分半），并且**只认自己那个前缀**——`%TEMP%` 里别人写的
+ * 东西一个都不动。退出时那次 `removeTemp()` 仍然留着（Linux / macOS 上它是真能
+ * 删掉的），只是不再指望它。
+ *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 const { app, BrowserWindow } = require('electron')

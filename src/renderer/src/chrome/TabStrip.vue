@@ -140,11 +140,11 @@ watch(
 
 function activate(tabId: string): void {
   if (tabId === props.activeTabId) return
-  void window.moyu.tabs.activate({ tabId })
+  void window.zhituan.tabs.activate({ tabId })
 }
 
 function close(tabId: string): void {
-  void window.moyu.tabs.close({ tabId })
+  void window.zhituan.tabs.close({ tabId })
 }
 
 /**
@@ -159,7 +159,7 @@ function openList(): void {
   const el = fallback.value
   if (!el) return
   const r = el.getBoundingClientRect()
-  void window.moyu.ui.openPopover({
+  void window.zhituan.ui.openPopover({
     kind: 'tabs',
     anchorRect: {
       x: Math.round(r.left),
@@ -304,21 +304,21 @@ function hideBrokenIcon(event: Event): void {
   max-width: 180px;
   height: 26px;
   padding: 0 3px 0 8px;
-  border-radius: var(--moyu-radius);
-  color: var(--moyu-text-dim);
+  border-radius: var(--zhituan-radius);
+  color: var(--zhituan-text-dim);
   white-space: nowrap;
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 
 .tab:hover {
-  background: var(--moyu-surface-hover);
-  color: var(--moyu-ink);
+  background: var(--zhituan-surface-hover);
+  color: var(--zhituan-ink);
 }
 
 /* 当前这一格：与地址栏开关的「展开中」同一套说法——底色抬起，文字压深 */
 .tab.on {
-  background: var(--moyu-surface-active);
-  color: var(--moyu-ink);
+  background: var(--zhituan-surface-active);
+  color: var(--zhituan-ink);
 }
 
 .glyph {
@@ -327,11 +327,11 @@ function hideBrokenIcon(event: Event): void {
   height: 14px;
   display: grid;
   place-items: center;
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
 }
 
 .tab.on .glyph {
-  color: var(--moyu-accent);
+  color: var(--zhituan-accent);
 }
 
 .glyph img {
@@ -366,8 +366,8 @@ function hideBrokenIcon(event: Event): void {
   height: 18px;
   display: grid;
   place-items: center;
-  border-radius: var(--moyu-radius-sm);
-  color: var(--moyu-text-faint);
+  border-radius: var(--zhituan-radius-sm);
+  color: var(--zhituan-text-faint);
   visibility: hidden;
 }
 
@@ -385,8 +385,8 @@ function hideBrokenIcon(event: Event): void {
 }
 
 .x:hover {
-  background: var(--moyu-surface);
-  color: var(--moyu-danger);
+  background: var(--zhituan-surface);
+  color: var(--zhituan-danger);
 }
 
 /*
@@ -405,17 +405,17 @@ function hideBrokenIcon(event: Event): void {
   align-items: center;
   gap: 6px;
   padding: 0 10px;
-  border-radius: var(--moyu-radius-pill);
-  background: var(--moyu-surface-hover);
-  color: var(--moyu-text-dim);
+  border-radius: var(--zhituan-radius-pill);
+  background: var(--zhituan-surface-hover);
+  color: var(--zhituan-text-dim);
   white-space: nowrap;
   cursor: pointer;
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 
 .fallback:hover {
-  background: var(--moyu-surface-active);
-  color: var(--moyu-ink);
+  background: var(--zhituan-surface-active);
+  color: var(--zhituan-ink);
 }
 
 /* 窄到只剩几十像素时先舍标题，标签数那枚小牌与箭头要留住 */
@@ -438,7 +438,7 @@ function hideBrokenIcon(event: Event): void {
   height: 22px;
   display: grid;
   place-items: center;
-  border-radius: var(--moyu-radius-sm);
+  border-radius: var(--zhituan-radius-sm);
 }
 
 .caret::before {
@@ -454,17 +454,17 @@ function hideBrokenIcon(event: Event): void {
 
 /* 与标签格那枚 ✕ 同一套悬停说法：抬起底色，字压深 */
 .caret:hover {
-  background: var(--moyu-surface);
-  color: var(--moyu-ink);
+  background: var(--zhituan-surface);
+  color: var(--zhituan-ink);
 }
 
 .count {
   flex: 0 0 auto;
   min-width: 16px;
   padding: 0 4px;
-  border-radius: var(--moyu-radius-tag);
-  background: var(--moyu-surface-active);
-  color: var(--moyu-text-dim);
+  border-radius: var(--zhituan-radius-tag);
+  background: var(--zhituan-surface-active);
+  color: var(--zhituan-text-dim);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   text-align: center;

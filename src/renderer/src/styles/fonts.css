@@ -20,10 +20,10 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 @font-face {
-  font-family: 'Moyu Display Serif';
+  font-family: 'Zhituan Display Serif';
   /* 就写 woff2：可变这一层由 format 后缀（`woff2-variations`）去说是老写法，
      现行浏览器认 `woff2` 就够了 */
-  src: url('../assets/fonts/moyu-display-serif.woff2') format('woff2');
+  src: url('../assets/fonts/zhituan-display-serif.woff2') format('woff2');
   font-weight: 400 700;
   font-style: normal;
   font-display: swap;

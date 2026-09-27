@@ -18,8 +18,8 @@ export function useUpdate() {
   let unsubscribe: (() => void) | null = null
 
   onMounted(async () => {
-    state.value = await window.moyu.update.get()
-    unsubscribe = window.moyu.update.onState((next) => {
+    state.value = await window.zhituan.update.get()
+    unsubscribe = window.zhituan.update.onState((next) => {
       state.value = next
     })
   })
@@ -33,7 +33,7 @@ export function useUpdate() {
    * 状态已经是 downloading，之后每一步都由广播送过来。
    */
   async function check(): Promise<void> {
-    state.value = await window.moyu.update.check()
+    state.value = await window.zhituan.update.check()
   }
 
   /**
@@ -43,12 +43,12 @@ export function useUpdate() {
    * 那一百多兆下完），两种情况都没有什么可等的。
    */
   function install(): void {
-    void window.moyu.update.install()
+    void window.zhituan.update.install()
   }
 
   /** 忽略这个版本（传 null 是撤销）；下一次查到别的版本照常提示 */
   async function ignore(version: string | null): Promise<void> {
-    state.value = await window.moyu.update.ignore({ version })
+    state.value = await window.zhituan.update.ignore({ version })
   }
 
   return { state, check, install, ignore }

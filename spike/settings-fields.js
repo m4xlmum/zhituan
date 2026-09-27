@@ -132,7 +132,7 @@ app.whenReady().then(async () => {
     box.checked = !before
     box.dispatchEvent(new Event('change', { bubbles: true }))
     await new Promise((r) => setTimeout(r, 200))
-    const cfg = await window.moyu.config.get()
+    const cfg = await window.zhituan.config.get()
     return { before, boxNow: box.checked, saved: cfg.stealth.muteMediaOnCollapse, stealth: cfg.stealth }
   })()`)
 

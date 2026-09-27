@@ -51,7 +51,7 @@ const zoomPercent = computed(() => Math.round((props.activeTab?.zoom ?? 1) * 100
 function openPopover(kind: PopoverKind, event: MouseEvent): void {
   const el = event.currentTarget as HTMLElement
   const r = el.getBoundingClientRect()
-  void window.moyu.ui.openPopover({
+  void window.zhituan.ui.openPopover({
     kind,
     anchorRect: {
       x: Math.round(r.left),
@@ -69,12 +69,12 @@ function openPopover(kind: PopoverKind, event: MouseEvent): void {
 function zoom(op: 'in' | 'out' | 'reset'): void {
   const tabId = props.activeTab?.id
   if (!tabId) return
-  void window.moyu.page.setZoom({ tabId, op })
+  void window.zhituan.page.setZoom({ tabId, op })
 }
 
 /** 整扇窗的透明度，含网页 */
 function setOpacity(value: number): void {
-  void window.moyu.win.setOpacity({ value })
+  void window.zhituan.win.setOpacity({ value })
 }
 
 /** 界面底板（顶栏、本栏、弹出面板）的透明度，网页不受影响 */
@@ -228,15 +228,15 @@ function togglePauseOnCollapse(): void {
 
 <style scoped>
 .rail {
-  flex: 0 0 var(--moyu-rail-w);
-  width: var(--moyu-rail-w);
+  flex: 0 0 var(--zhituan-rail-w);
+  width: var(--zhituan-rail-w);
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  background: var(--moyu-surface);
-  border-left: 1px solid var(--moyu-hairline);
+  background: var(--zhituan-surface);
+  border-left: 1px solid var(--zhituan-hairline);
 }
 
 /*
@@ -244,7 +244,7 @@ function togglePauseOnCollapse(): void {
  * 不给它让位的话，第一个按钮就被压在球底下了。
  */
 .rail.ball-top {
-  padding-top: calc(4px + var(--moyu-ball-size) + var(--moyu-ball-margin) * 2);
+  padding-top: calc(4px + var(--zhituan-ball-size) + var(--zhituan-ball-margin) * 2);
 }
 
 .stack {
@@ -270,7 +270,7 @@ function togglePauseOnCollapse(): void {
   flex: 0 0 auto;
   height: 1px;
   margin: 3px 4px;
-  background: var(--moyu-hairline);
+  background: var(--zhituan-hairline);
 }
 
 .item {
@@ -280,25 +280,25 @@ function togglePauseOnCollapse(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--moyu-radius-sm);
-  color: var(--moyu-text-dim);
+  border-radius: var(--zhituan-radius-sm);
+  color: var(--zhituan-text-dim);
   white-space: nowrap;
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 
 .item:hover:not(:disabled) {
-  background: var(--moyu-surface-hover);
-  color: var(--moyu-ink);
+  background: var(--zhituan-surface-hover);
+  color: var(--zhituan-ink);
 }
 
 /* 没有当前网页时缩放那三格是禁用的：默认值摆在那里，但点了什么都不会发生 */
 .item:disabled {
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
 }
 
 .item.on {
-  color: var(--moyu-accent);
-  background: var(--moyu-accent-soft);
+  color: var(--zhituan-accent);
+  background: var(--zhituan-accent-soft);
 }
 
 .item.percent {

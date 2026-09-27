@@ -54,7 +54,7 @@ export class TrayService {
         image = nativeImage.createEmpty()
       }
       this.tray = new Tray(image)
-      this.tray.setToolTip('摸鱼阅读')
+      this.tray.setToolTip('纸团')
       this.tray.setContextMenu(this.buildMenu())
       // 单击切换显隐。不再单独处理 double-click：双击本来就是两次 click，
       // 那两次里只有第一次作数，剩下的交给去重丢掉。

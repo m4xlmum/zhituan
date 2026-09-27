@@ -76,7 +76,7 @@ function reportRect(): void {
   const node = el.value
   if (!node) return
   const r = node.getBoundingClientRect()
-  window.moyu.win.setBallRect({
+  window.zhituan.win.setBallRect({
     x: Math.round(r.left),
     y: Math.round(r.top),
     width: Math.round(r.width),
@@ -103,9 +103,9 @@ watch(
     ref="el"
     class="ball"
     :class="{ docked: !collapsed, floating, collapsed }"
-    :style="collapsed ? undefined : { width: 'var(--moyu-ball-size)', height: 'var(--moyu-ball-size)' }"
-    :title="collapsed ? '展开摸鱼阅读（右键更多）' : '收起成悬浮球（右键更多，拖动可移动窗口）'"
-    :aria-label="collapsed ? '展开摸鱼阅读' : '收起成悬浮球'"
+    :style="collapsed ? undefined : { width: 'var(--zhituan-ball-size)', height: 'var(--zhituan-ball-size)' }"
+    :title="collapsed ? '展开纸团（右键更多）' : '收起成悬浮球（右键更多，拖动可移动窗口）'"
+    :aria-label="collapsed ? '展开纸团' : '收起成悬浮球'"
     @pointerdown="drag.onPointerDown"
     @pointerup="drag.onPointerUp"
     @pointercancel="drag.onPointerCancel"
@@ -132,9 +132,9 @@ watch(
   place-items: center;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--moyu-accent);
+  background: var(--zhituan-accent);
   /* 球面就是一块实色填充，上面的图形跟着填充的深浅翻面，见 themes.css */
-  color: var(--moyu-on-fill);
+  color: var(--zhituan-on-fill);
   opacity: 0.55;
   box-shadow: 0 2px 8px rgba(17, 24, 39, 0.28);
   transition: opacity 140ms ease-out, box-shadow 140ms ease-out;
@@ -152,8 +152,8 @@ watch(
 /* 顶栏藏起来时球浮在右上角。右栏会被强制保留，所以那里一定是 chrome 的地盘 */
 .ball.floating {
   position: absolute;
-  top: var(--moyu-ball-margin);
-  right: var(--moyu-ball-margin);
+  top: var(--zhituan-ball-margin);
+  right: var(--zhituan-ball-margin);
 }
 
 /*
@@ -214,12 +214,12 @@ watch(
   opacity: 1;
   box-shadow:
     0 1px 4px rgba(17, 24, 39, 0.3),
-    inset 0 0 0 2px color-mix(in srgb, var(--moyu-on-fill) 45%, transparent);
+    inset 0 0 0 2px color-mix(in srgb, var(--zhituan-on-fill) 45%, transparent);
 }
 
 .ball:focus-visible {
   opacity: 1;
-  outline: 2px solid var(--moyu-accent);
+  outline: 2px solid var(--zhituan-accent);
   outline-offset: 2px;
 }
 

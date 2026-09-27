@@ -8,13 +8,20 @@
  *   能被切走），但它画的是自家那一页 pdf.js，不是网页——见 services/pdfReader.ts。
  *   它对外示人的地址仍是那个 `file:///…/book.pdf`：历史、离线阅读那一行、地址栏
  *   上的名字都按本机文件读，而视图里加载的是阅读页（`viewUrl`）。
+ * - **本机 EPUB 的阅读页**（kind = 'book'）：与上一条同构、同一条账——`viewUrl`
+ *   指向自家书页，对外露的仍是那个 `.epub`。差别只在谁来拆书：见
+ *   services/bookReader.ts（解包是主进程的活，排版是页面自己的活）。
  * - **自家的两屏**（起始页、系统设置）：也在这一层视图里（独立窗口会进任务栏与
  *   Alt+Tab，等于把「我在摸鱼」写在脸上），但**不是标签页**——不进 `order`、
  *   没有关闭键、各有各的入口（两者是顶栏最左并排的两颗键：起始页、设置）。
  *
- * 三者共用同一套机制（视图、可见性、版面、广播），差别只在上面那本账：
- * **进标签条的是前两种**（isTab），**带 preload 的是后两种**（needsPreload）——
- * 这两条判据在这一版之前是同一条（「不是访客页」），本机 PDF 一来就分家了。
+ * 四者共用同一套机制（视图、可见性、版面、广播），差别只在上面那本账：
+ * **进标签条的是前三种**（isTab），**带 preload 的除了访客页都有**（needsPreload
+ * 就是 `kind !== 'guest'`）——这两条判据在这一版之前是同一条（「不是访客页」），
+ * 本机 PDF 一来就分家了。
+ *
+ * **kind 只在 create() 一处判**（本机 PDF / 本机 EPUB / 其余），四种入口——会话
+ * 恢复、选文件框、网页里点一个 file: 链接、地址栏粘路径——都从那一条过。
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -34,19 +41,20 @@ import {
 } from '@shared/constants'
 import type { TabsStatePayload } from '@shared/ipc'
 import type { OwnScreen, Rect, TabState } from '@shared/types'
-import { fileNameOf, isLocalFile, isLocalPdf, resolveInput } from '@shared/url'
+import { fileNameOf, isLocalEpub, isLocalFile, isLocalPdf, resolveInput } from '@shared/url'
 import { uaFor, type UaMode } from '@shared/ua'
 import { applyReaderOpacity, injectPageStyles } from './pageStyler'
+import { bookReaderUrl } from './bookReader'
 import { pdfReaderUrl } from './pdfReader'
 import { rendererUrl } from './rendererUrl'
 import { log } from './logger'
 
 /**
  * 自家页面（带 preload，以伪地址示人）、网页（纯网页，无 preload）、
- * 本机 PDF 的阅读页（自家的一页，画在标签条上）。
+ * 本机文件的两个阅读页（自家的一页，画在标签条上）。
  * 访客页绝不与另外两类共用视图：给访客页注入 preload 等于把主进程能力交给任意网页。
  */
-export type TabKind = 'home' | 'settings' | 'guest' | 'pdf'
+export type TabKind = 'home' | 'settings' | 'guest' | 'pdf' | 'book'
 
 /** 自家页面：渲染产物名、对外伪地址与标签标题 */
 const OWN_PAGE: Record<OwnScreen, { page: 'home' | 'settings'; url: string; title: string }> = {
@@ -61,10 +69,10 @@ const isScreen = (kind: TabKind): kind is OwnScreen => kind === 'home' || kind =
 const isTab = (kind: TabKind): boolean => !isScreen(kind)
 
 /**
- * 带 preload 的视图：自家那两屏，加本机 PDF 的阅读页。
+ * 带 preload 的视图：自家那两屏，加两个阅读页（本机 PDF 与本机 EPUB）。
  *
- * 阅读页要读配置（主题决定墨色、背景透明度决定它那一条浮层），
- * 因此它与自家那两屏一样需要那座桥；网页则一律没有。
+ * 两个阅读页都要读配置——主题决定墨色，阅读透明度决定纸的深浅——因此它们与自家
+ * 那两屏一样需要那座桥；网页则一律没有。
  */
 const needsPreload = (kind: TabKind): boolean => kind !== 'guest'
 
@@ -75,7 +83,7 @@ const needsPreload = (kind: TabKind): boolean => kind !== 'guest'
  * 视频会照常往下播，用户回来时进度已经跑掉了。`setAudioMuted` 只解决听得到
  * 的那一半（它仍然要留着——Web Audio 与我们暂停不到的播放器都靠它闭麦）。
  *
- * 记号打成一个展开属性（`__moyuPaused`）而不是 `data-` 属性：后者会出现在 DOM 里，
+ * 记号打成一个展开属性（`__zhituanPaused`）而不是 `data-` 属性：后者会出现在 DOM 里，
  * 页面自己能看见。也正因为记号在元素上，页面换了播放器元素、或者整页导航走了，
  * 这份账就自然作废，不会出现「恢复了一个已经不存在的播放器」。
  */
@@ -83,7 +91,7 @@ const PAUSE_PLAYING_MEDIA = `(() => {
   let n = 0
   for (const el of document.querySelectorAll('video, audio')) {
     if (el.paused || el.ended) continue
-    el.__moyuPaused = true
+    el.__zhituanPaused = true
     el.pause()
     n += 1
   }
@@ -99,8 +107,8 @@ const PAUSE_PLAYING_MEDIA = `(() => {
 const RESUME_PAUSED_MEDIA = `(() => {
   let n = 0
   for (const el of document.querySelectorAll('video, audio')) {
-    if (el.__moyuPaused !== true) continue
-    delete el.__moyuPaused
+    if (el.__zhituanPaused !== true) continue
+    delete el.__zhituanPaused
     n += 1
     const p = el.play()
     if (p && typeof p.catch === 'function') p.catch(() => {})
@@ -299,19 +307,20 @@ export class TabManager {
 
     const cfg = this.deps.getConfig().browser
     /*
-     * 「这个地址该开成哪一路」只有这一处判：本机 PDF 开成自家的阅读页，
-     * 其余一律是普通网页。会话恢复（启动时把上次那些地址逐一 create）、
-     * 选文件框、网页里点一个 file:// 的链接——三条路都从这里过，
-     * 谁也不必各自记着这条规矩（少一处判就少一处漏判）。
+     * 「这个地址该开成哪一路」只有这一处判：本机 PDF 与本机 EPUB 各开成自家的
+     * 阅读页，其余一律是普通网页。会话恢复（启动时把上次那些地址逐一 create）、
+     * 选文件框、网页里点一个 file:// 的链接、地址栏里粘进来的路径——四条路都从
+     * 这里过，谁也不必各自记着这条规矩（少一处判就少一处漏判）。
      */
-    let kind: TabKind = input.kind ?? (isLocalPdf(input.url) ? 'pdf' : 'guest')
+    let kind: TabKind =
+      input.kind ?? (isLocalPdf(input.url) ? 'pdf' : isLocalEpub(input.url) ? 'book' : 'guest')
     const id = nextId()
 
     const view = new WebContentsView({
       webPreferences: {
         // 访客页面不注入任何 preload，是纯网页。
         // 一切注入都走主进程的 insertCSS / executeJavaScript。
-        // 自家那两屏与本机 PDF 的阅读页带 preload，且 preload 内部还会再校验来源。
+        // 自家那两屏与两种本机阅读页（PDF / EPUB）带 preload，且 preload 内部还会再校验来源。
         preload: needsPreload(kind) ? this.deps.getPreloadPath() : undefined,
         session: this.deps.getSession(),
         contextIsolation: true,
@@ -351,6 +360,19 @@ export class TabManager {
         viewUrl = pdfReaderUrl(url)
       } catch (err) {
         log.warn(`打不开这本 PDF 的阅读页，退回内置阅读器：${url}`, err)
+        kind = 'guest'
+      }
+    } else if (kind === 'book') {
+      try {
+        viewUrl = bookReaderUrl(url)
+      } catch (err) {
+        /*
+         * 与 PDF 同一条退路：解析不出路径（Windows 上的网络路径）时退回「当普通
+         * 网页打开」，比开出一张空白页强。区别在于 Chromium 读得懂 file: 的 PDF，
+         * 读不懂 EPUB——这一退会变成一次下载。所以这不是「另一条能用的路」，而是
+         * 「把选择权交回去」：用户至少看得见那个文件本身，而不是对着白屏猜。
+         */
+        log.warn(`打不开这本 EPUB 的阅读页，退回普通网页：${url}`, err)
         kind = 'guest'
       }
     }
@@ -818,10 +840,10 @@ export class TabManager {
      * 离线阅读的透明度走另一张样式表，**只有本机文件吃**。
      *
      * 判据必须在这里：pageStyler 不知道这一页是什么，而「网页永远不许淡」
-     * 是这一条的硬边界（见 PRODUCT.md）。本机 PDF 是自家阅读页（kind 是 'pdf'，
-     * 上面那一步就返回了），它的那一条由页面自己落在画布底色上——淡的是纸，
-     * 不是字（见 pdf/PdfApp.vue）。同一个配置项、两条实现，因为那一页是我们
-     * 画的、这一页是 Chromium 画的。
+     * 是这一条的硬边界（见 PRODUCT.md）。本机 PDF 与 EPUB 都是自家阅读页
+     * （kind 是 'pdf' / 'book'，上面那一步就返回了），它们那一条由页面自己落下
+     * 去——淡的都是那张纸，不是字（见 pdf/PdfApp.vue 与 book/BookApp.vue）。
+     * 同一个配置项、几条实现，因为那两页是我们画的、这一页是 Chromium 画的。
      */
     const reader = isLocalFile(entry.url) ? cfg.ui.readerOpacity : 1
     void applyReaderOpacity(entry.view.webContents, reader)

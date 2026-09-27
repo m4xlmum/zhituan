@@ -2,10 +2,10 @@
 #
 # productName 用中文是为了显示好看，但可执行文件名与产物名保持 ASCII：
 # 中文文件名在部分工具链与杀软扫描下会出问题，而用户Data目录名已由
-# 主进程的 app.setName('moyu-reader') 单独保证，不受此处影响。
+# 主进程的 app.setName('zhituan') 单独保证，不受此处影响。
 
-appId: com.m4xlmum.moyu-reader
-productName: 摸鱼阅读
+appId: com.m4xlmum.zhituan
+productName: 纸团
 
 directories:
   buildResources: build
@@ -15,7 +15,7 @@ files:
   - out/**
   - package.json
   # pdf.js 的运行时只用到四个目录（cmaps / standard_fonts / wasm / iccs，约 4MB），
-  # 由主进程那条 moyu-pdf:// 协议直接从 app.asar 里读（见 services/pdfReader.ts）。
+  # 由主进程那条 zhituan-pdf:// 协议直接从 app.asar 里读（见 services/pdfReader.ts）。
   # 其余几层一律挡在外面，合计约 65MB：
   #   build/ (12M) legacy/ (16M)  两份构建产物。渲染进程用的是 Vite 打进
   #       out/renderer 的那一份，运行时不需要 node_modules 里这份；
@@ -38,9 +38,9 @@ extraResources:
     to: tray.ico
 
 win:
-  executableName: moyu-reader
+  executableName: zhituan
   icon: build/icon.ico
-  artifactName: moyu-reader-${version}-${arch}.${ext}
+  artifactName: zhituan-${version}-${arch}.${ext}
   target:
     - target: nsis
       arch: [x64]
@@ -54,7 +54,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: 摸鱼阅读
+  shortcutName: 纸团
   installerLanguages: [zh_CN]
   # 2052 = 简体中文
   language: '2052'

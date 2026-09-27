@@ -86,7 +86,7 @@ function toggleBall(): void {
 
 /** 球的右键菜单。原生菜单，在顶栏之外也能弹（chrome 层画不出的地方它照画） */
 function openBallMenu(): void {
-  void window.moyu.win.openBallMenu()
+  void window.zhituan.win.openBallMenu()
 }
 
 /**
@@ -99,21 +99,21 @@ function openBallMenu(): void {
  * 由 Ball 量出来上报，两边用的是同一组数字。
  */
 const geometryVars = {
-  '--moyu-top-h': `${TOP_BAR_H}px`,
-  '--moyu-address-h': `${ADDRESS_H}px`,
-  '--moyu-notice-h': `${NOTICE_H}px`,
-  '--moyu-rail-w': `${RAIL_W}px`,
-  '--moyu-ball-size': `${BALL_SIZE}px`,
-  '--moyu-ball-margin': `${BALL_MARGIN}px`,
-  '--moyu-resize-edge': `${RESIZE_EDGE}px`,
-  '--moyu-resize-corner': `${RESIZE_CORNER}px`,
+  '--zhituan-top-h': `${TOP_BAR_H}px`,
+  '--zhituan-address-h': `${ADDRESS_H}px`,
+  '--zhituan-notice-h': `${NOTICE_H}px`,
+  '--zhituan-rail-w': `${RAIL_W}px`,
+  '--zhituan-ball-size': `${BALL_SIZE}px`,
+  '--zhituan-ball-margin': `${BALL_MARGIN}px`,
+  '--zhituan-resize-edge': `${RESIZE_EDGE}px`,
+  '--zhituan-resize-corner': `${RESIZE_CORNER}px`,
   /*
    * 最大化态那两组数字与上面同源：主进程把 chrome 视图的矩形设成
    * FLOAT_W × FLOAT_H（见 floatBox），这里画出来的一行必须正好填满它，
    * 差几像素就是球露出一条边或者被切掉一角。
    */
-  '--moyu-float-key': `${FLOAT_KEY_SIZE}px`,
-  '--moyu-float-gap': `${FLOAT_GAP}px`
+  '--zhituan-float-key': `${FLOAT_KEY_SIZE}px`,
+  '--zhituan-float-gap': `${FLOAT_GAP}px`
 }
 </script>
 
@@ -250,8 +250,8 @@ const geometryVars = {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: var(--moyu-float-gap);
-  padding-right: var(--moyu-ball-margin);
+  gap: var(--zhituan-float-gap);
+  padding-right: var(--zhituan-ball-margin);
 }
 
 /*
@@ -262,25 +262,25 @@ const geometryVars = {
  * 尺寸与圆角都跟着球的规矩来，免得挨在一起的两颗一圆一方。
  */
 .float-key {
-  width: var(--moyu-float-key);
-  height: var(--moyu-float-key);
+  width: var(--zhituan-float-key);
+  height: var(--zhituan-float-key);
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--moyu-surface);
-  color: var(--moyu-text-dim);
+  background: var(--zhituan-surface);
+  color: var(--zhituan-text-dim);
   box-shadow: 0 2px 8px rgba(17, 24, 39, 0.28);
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 
 .float-key:hover {
-  background: var(--moyu-surface-hover);
-  color: var(--moyu-ink);
+  background: var(--zhituan-surface-hover);
+  color: var(--zhituan-ink);
 }
 
 .float-key:active {
-  background: var(--moyu-surface-active);
+  background: var(--zhituan-surface-active);
 }
 </style>

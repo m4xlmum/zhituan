@@ -53,7 +53,7 @@ const step = (what) => console.log(`  · ${what}`)
 
 /** 把要用的几份 TS 各打成一包再 require。理由与 media-pause.js 同：验真的，不验抄本 */
 async function buildModules() {
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-popover-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-popover-'))
   await esbuild.build({
     entryPoints: [
       path.join(ROOT, 'src', 'main', 'services', 'popoverWindow.ts'),

@@ -41,7 +41,7 @@ app.whenReady().then(async () => {
     skipTaskbar: true,
     hasShadow: false,
     backgroundColor: '#00000000',
-    title: 'moyu-minsize-probe'
+    title: 'zhituan-minsize-probe'
   })
 
   const want = [
@@ -74,7 +74,7 @@ app.whenReady().then(async () => {
   // 顺带确认一下有没有 setMinimumSize 之类的隐性下限
   report.minimumSize = win.getMinimumSize()
 
-  console.log('MOYU_MINSIZE ' + JSON.stringify(report))
+  console.log('ZHITUAN_MINSIZE ' + JSON.stringify(report))
 
   win.destroy()
   app.exit(0)

@@ -46,7 +46,7 @@ onMounted(() => {
 })
 
 function close(): void {
-  window.moyu.win.setAddressOpen({ open: false })
+  window.zhituan.win.setAddressOpen({ open: false })
 }
 
 /**
@@ -62,7 +62,7 @@ function submit(): void {
   if (!value) return
   editing.value = false
   close()
-  void window.moyu.nav.goto({ tabId: props.activeTabId, input: value })
+  void window.zhituan.nav.goto({ tabId: props.activeTabId, input: value })
 }
 </script>
 
@@ -91,14 +91,14 @@ function submit(): void {
 <style scoped>
 .address-row {
   flex: 0 0 auto;
-  height: var(--moyu-address-h);
+  height: var(--zhituan-address-h);
   display: flex;
   align-items: center;
   /* 这一行不与悬浮球重叠：球停在顶栏的槽位里，或停在右侧栏，
      两种情况都够不到这里，因此不预留槽位 */
   padding: 0 8px;
-  background: var(--moyu-surface);
-  border-bottom: 1px solid var(--moyu-hairline);
+  background: var(--zhituan-surface);
+  border-bottom: 1px solid var(--zhituan-hairline);
 }
 
 /* 做成浏览器的地址框：浅底圆角，而不是一条下划线 */
@@ -112,30 +112,30 @@ function submit(): void {
   width: 100%;
   height: 24px;
   padding: 0 12px;
-  background: var(--moyu-surface-hover);
+  background: var(--zhituan-surface-hover);
   border: 1px solid transparent;
-  border-radius: var(--moyu-radius);
-  color: var(--moyu-ink);
+  border-radius: var(--zhituan-radius);
+  color: var(--zhituan-ink);
   outline: none;
   transition: background 120ms ease-out, border-color 120ms ease-out;
 }
 
 .field input::placeholder {
-  color: var(--moyu-text-faint);
+  color: var(--zhituan-text-faint);
 }
 
 .field input:hover {
-  background: var(--moyu-surface-active);
+  background: var(--zhituan-surface-active);
 }
 
 .field input:focus {
-  background: var(--moyu-surface);
-  border-color: var(--moyu-accent);
+  background: var(--zhituan-surface);
+  border-color: var(--zhituan-accent);
 }
 
 /* 焦点不能只靠颜色：低透明度下背景与描边的变化不足以定位 */
 .field input:focus-visible {
-  outline: 2px solid var(--moyu-accent);
+  outline: 2px solid var(--zhituan-accent);
   outline-offset: 1px;
 }
 </style>

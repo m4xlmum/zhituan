@@ -17,6 +17,9 @@ import {
   DEFAULT_BOSS_MINIMIZE,
   DEFAULT_HOME_THEME,
   DEFAULT_NEW_TAB_URL,
+  DEFAULT_READER_FONT,
+  DEFAULT_READER_LINE,
+  DEFAULT_READER_MARGIN,
   DEFAULT_SEARCH_TEMPLATE,
   HIDE_DELAY_MS,
   HOME_THEMES,
@@ -63,6 +66,11 @@ export function defaultConfig(): AppConfig {
       // 正文默认不淡：这一条管的是「我在读的那点字」，一上来就淡着
       // 等于把可读性默认调低，而它的用处只在「想让它更不容易被看见」时才有
       readerOpacity: 1,
+      // 阅读排版三项与书页原先写死的那组逐字相同（17px / 1.85 / 6%），
+      // 因此这一版把写死的值搬进配置之后，老用户看到的版面一个像素都不变。
+      readerFontSize: DEFAULT_READER_FONT,
+      readerLineHeight: DEFAULT_READER_LINE,
+      readerMargin: DEFAULT_READER_MARGIN,
       ballIcon: DEFAULT_BALL_ICON,
       ballCustomFit: DEFAULT_BALL_CUSTOM_FIT
     },
@@ -130,6 +138,9 @@ function normalize(input: Partial<AppConfig> | null | undefined): AppConfig {
     homeTheme: input.ui?.homeTheme ?? d.ui.homeTheme,
     backgroundOpacity: input.ui?.backgroundOpacity ?? d.ui.backgroundOpacity,
     readerOpacity: input.ui?.readerOpacity ?? d.ui.readerOpacity,
+    readerFontSize: input.ui?.readerFontSize ?? d.ui.readerFontSize,
+    readerLineHeight: input.ui?.readerLineHeight ?? d.ui.readerLineHeight,
+    readerMargin: input.ui?.readerMargin ?? d.ui.readerMargin,
     ballIcon: input.ui?.ballIcon ?? d.ui.ballIcon,
     ballCustomFit: input.ui?.ballCustomFit ?? d.ui.ballCustomFit
   }

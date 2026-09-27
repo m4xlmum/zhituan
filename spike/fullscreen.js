@@ -99,7 +99,7 @@ const step = (what) => console.log(`  · ${what}`)
 
 /** 把要用的几份 TS 各打成一包再 require。理由与 window-max.js 同：验真的，不验抄本 */
 async function buildModules() {
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-fs-'))
+  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-fs-'))
   await esbuild.build({
     entryPoints: [
       path.join(ROOT, 'src', 'main', 'services', 'windowController.ts'),
@@ -141,7 +141,7 @@ const rectEq = (a, b) =>
  * data: 是不透明源，全屏要不要放行是另一件与本题无关的事。
  */
 function writePage() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-fs-page-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-fs-page-'))
   const file = path.join(dir, 'player.html')
   fs.writeFileSync(
     file,
@@ -156,19 +156,19 @@ function writePage() {
      * （exitFullscreen 的那个尤其——它要等一次窗口级的全屏恢复被确认，
      * 而没人显示过的窗口永远不确认），而 executeJavaScript 会等返回值里的
      * Promise，于是「退出全屏」这一步每次都卡死在那里。
-     * 失败原因记在 window.moyuErr 里，要看的时候再读，一样查得出来。
+     * 失败原因记在 window.zhituanErr 里，要看的时候再读，一样查得出来。
      */
-    window.moyuErr = null
-    window.moyuPlay = () => {
-      window.moyuErr = null
+    window.zhituanErr = null
+    window.zhituanPlay = () => {
+      window.zhituanErr = null
       document.getElementById('player').requestFullscreen().catch((e) => {
-        window.moyuErr = String(e)
+        window.zhituanErr = String(e)
       })
     }
-    window.moyuStop = () => {
-      window.moyuErr = null
+    window.zhituanStop = () => {
+      window.zhituanErr = null
       document.exitFullscreen().catch((e) => {
-        window.moyuErr = String(e)
+        window.zhituanErr = String(e)
       })
     }
   </script>
@@ -243,7 +243,7 @@ async function stage(scenario, mods) {
   const { WindowRegistry } = mods.registry
   const { TOP_BAR_H, RAIL_W, FLOAT_W, FLOAT_H } = mods.constants
 
-  const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'moyu-fs-config-'))
+  const configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-fs-config-'))
   const config = new ConfigStore(configDir)
 
   const displays = screen.getAllDisplays()
@@ -256,7 +256,7 @@ async function stage(scenario, mods) {
 
   // 内存会话：不给用户数据目录里留下任何东西。分区带上情景名，
   // 免得同一台机器上同时跑着的两支探针共用一份会话状态
-  const ses = session.fromPartition(`moyu-fullscreen-probe-${scenario}`)
+  const ses = session.fromPartition(`zhituan-fullscreen-probe-${scenario}`)
 
   ipcMain.on('preview:options', (event) => {
     event.returnValue = {
@@ -352,7 +352,7 @@ const SCENARIOS = {
     const { win, page, controller, workArea, beforeFullscreen, shape } = s
 
     step('页面进全屏')
-    await runInPage(page, 'window.moyuPlay()', '进全屏')
+    await runInPage(page, 'window.zhituanPlay()', '进全屏')
     // 等窗口真的铺上去：事件是异步的，读早了只会读到进全屏前那一格
     const reached = await waitUntil(() => Promise.resolve(rectEq(win.getBounds(), workArea)), 3000)
     if (!reached) step('窗口没在 3s 内铺满工作区，下面按当下实测记')
@@ -391,7 +391,7 @@ const SCENARIOS = {
      * 真的在全屏。
      */
     const before = s.notifyLog.length
-    await runInPage(page, 'window.moyuPlay()', '再按一次全屏键')
+    await runInPage(page, 'window.zhituanPlay()', '再按一次全屏键')
     await delay(250)
     const stillInFs = await isPageFullscreen(page)
     record(
@@ -408,9 +408,9 @@ const SCENARIOS = {
     const s = await stage('exit', mods)
     const { controller, win, page, workArea, beforeFullscreen, shape } = s
 
-    await runInPage(page, 'window.moyuPlay()', '进全屏')
+    await runInPage(page, 'window.zhituanPlay()', '进全屏')
     await waitUntil(() => Promise.resolve(rectEq(win.getBounds(), workArea)), 3000)
-    await runInPage(page, 'window.moyuStop()', '退全屏')
+    await runInPage(page, 'window.zhituanStop()', '退全屏')
     const back = await waitUntil(() => Promise.resolve(rectEq(win.getBounds(), beforeFullscreen)), 3000)
 
     const backBounds = win.getBounds()
@@ -443,12 +443,12 @@ const SCENARIOS = {
     await delay(200)
     const manualMax = win.getBounds()
 
-    await runInPage(page, 'window.moyuPlay()', '进全屏')
+    await runInPage(page, 'window.zhituanPlay()', '进全屏')
     const entered = await waitPageIn(page)
     if (!entered) step('网页没进到全屏，这一问的结论要打折看')
     const stillManual = win.getBounds()
 
-    await runInPage(page, 'window.moyuStop()', '退全屏')
+    await runInPage(page, 'window.zhituanStop()', '退全屏')
     await waitPageOut(page)
     const afterLeave = win.getBounds()
 
@@ -468,7 +468,7 @@ const SCENARIOS = {
     const s = await stage('restore', mods)
     const { controller, win, page, beforeFullscreen } = s
 
-    await runInPage(page, 'window.moyuPlay()', '进全屏')
+    await runInPage(page, 'window.zhituanPlay()', '进全屏')
     const entered = await waitPageIn(page)
     if (!entered) step('网页没进到全屏，这一问的结论要打折看')
 
@@ -504,7 +504,7 @@ const SCENARIOS = {
         leave事件到了: leaveArrived,
         网页退净: pageLeft,
         通知序列: s.notifyLog,
-        网页最后的报错: await page.executeJavaScript('window.moyuErr').catch(() => '读不到')
+        网页最后的报错: await page.executeJavaScript('window.zhituanErr').catch(() => '读不到')
       }
     )
     return s
@@ -521,11 +521,11 @@ const SCENARIOS = {
     const s = await stage('roundtrip', mods)
     const { win, page, workArea, beforeFullscreen } = s
 
-    await runInPage(page, 'window.moyuPlay()', '进全屏')
+    await runInPage(page, 'window.zhituanPlay()', '进全屏')
     const up = await waitUntil(() => Promise.resolve(rectEq(win.getBounds(), workArea)), 3000)
     const atMax = win.getBounds()
 
-    await runInPage(page, 'window.moyuStop()', '退全屏')
+    await runInPage(page, 'window.zhituanStop()', '退全屏')
     const down = await waitUntil(() => Promise.resolve(rectEq(win.getBounds(), beforeFullscreen)), 3000)
     const atBack = win.getBounds()
 
@@ -543,7 +543,7 @@ const SCENARIOS = {
     const s = await stage('collapse', mods)
     const { controller, win, page } = s
 
-    await runInPage(page, 'window.moyuPlay()', '进全屏')
+    await runInPage(page, 'window.zhituanPlay()', '进全屏')
     const beforeCollapse = await waitPageIn(page)
     if (!beforeCollapse) step('网页没进到全屏，这一问的结论要打折看')
 
@@ -592,7 +592,7 @@ const SCENARIOS = {
 
     const workArea = screen.getDisplayMatching(win.getBounds()).workArea
     const before = win.getBounds()
-    await view.webContents.executeJavaScript('window.moyuPlay()', true).catch(() => {})
+    await view.webContents.executeJavaScript('window.zhituanPlay()', true).catch(() => {})
     await delay(700)
     const after = win.getBounds()
     const inFs = await isPageFullscreen(view.webContents)

@@ -22,7 +22,7 @@ body {
 
 /* 浮层的尺寸都按它除回去，见 PdfApp 的 .hud。第一页画成之前它是 1 */
 :root {
-  --moyu-zoom: 1;
+  --zhituan-zoom: 1;
 }
 
 #app {

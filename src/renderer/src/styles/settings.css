@@ -27,9 +27,9 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--moyu-ground);
-  color: var(--moyu-text);
-  font-family: var(--moyu-font);
+  background: var(--zhituan-ground);
+  color: var(--zhituan-text);
+  font-family: var(--zhituan-font);
   font-size: 13px;
 }
 

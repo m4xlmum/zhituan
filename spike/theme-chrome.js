@@ -12,7 +12,7 @@
  * 从不写，于是永远落在主题层的 `:root` 那一组——纸白。这是设计，因此这一版的判据
  * 与上一版正好反过来：
  *
- * 1. **纸白这一套钉住了**：paper 下界面的每一条 --moyu-* 与一张定格表逐条相同。
+ * 1. **纸白这一套钉住了**：paper 下界面的每一条 --zhituan-* 与一张定格表逐条相同。
  *    主题层里配色散在各段变量组里，重做最怕的就是顺手改了不想改的那一档，
  *    而这种改动在截图上看不出来。表本身随配色一起更新，但判据一条不放松
  *    （见 PAPER_EXPECT 的说明）。
@@ -42,8 +42,8 @@
  * 7. **PDF 那一页的墨色是纸白那一份**（Q14）。这一条单独立问，不并进 Q2 里：
  *    用户报的就是它（磷绿下整本书的字变绿），而这个毛病在 Q2 的「四份文档读数相同」
  *    里只会体现成一行「pdf 逐条相同」，看不出说的是什么。PDF 这一页在探针里
- *    打不开书（没有 ?doc，也没有主进程那条 moyu-pdf: 通道），因此量的是**它的输入**
- *    ——算好的 --moyu-ink 与根上那两个属性；读它的那一行代码在 PdfApp 里只有一行、
+ *    打不开书（没有 ?doc，也没有主进程那条 zhituan-pdf: 通道），因此量的是**它的输入**
+ *    ——算好的 --zhituan-ink 与根上那两个属性；读它的那一行代码在 PdfApp 里只有一行、
  *    且只在模块初始化时跑一次（见那里的注释），不值得为它在这儿再摆一个真 PDF。
  *
  * 颜色一律经 canvas 归一后比对：getPropertyValue 拿回来的是计算值，写法
@@ -161,56 +161,56 @@ ipcMain.on('preview:options', (event) => {
  * 文档（配色散在各处、用它的地方更多了），改一个想改的值顺手带坏另一个，
  * 从截图上完全看不出来。
  * 因此这里不再是「与改动前相同」，而是「与本表逐条相同」，**判据一条没放松**：
- * 仍然逐条比到四通道，仍然要求 --moyu-font 是无衬线栈。
+ * 仍然逐条比到四通道，仍然要求 --zhituan-font 是无衬线栈。
  *
  * 值来自 styles/themes.css 的纸白那一段；改动那边的配色，这里跟着一起改，
  * 改不动就说明这次改的不是纸白一套，而是顺手带了别的主题。
  */
 const PAPER_EXPECT = {
   /* 这个必须是纯白：Q4 要求「底板淡、面还是 #ffffff 的那三通道」 */
-  '--moyu-surface': ['#ffffff', 1],
-  '--moyu-surface-hover': ['#f3f4f6', 1],
-  '--moyu-surface-active': ['#e8eaee', 1],
-  '--moyu-border': ['#d2d6dd', 1],
-  '--moyu-hairline': ['#e6e8ec', 1],
-  '--moyu-ink': ['#15181d', 1],
-  '--moyu-text': ['#15181d', 1],
-  '--moyu-text-dim': ['#5a6270', 1],
-  '--moyu-text-faint': ['#666d79', 1],
+  '--zhituan-surface': ['#ffffff', 1],
+  '--zhituan-surface-hover': ['#f3f4f6', 1],
+  '--zhituan-surface-active': ['#e8eaee', 1],
+  '--zhituan-border': ['#d2d6dd', 1],
+  '--zhituan-hairline': ['#e6e8ec', 1],
+  '--zhituan-ink': ['#15181d', 1],
+  '--zhituan-text': ['#15181d', 1],
+  '--zhituan-text-dim': ['#5a6270', 1],
+  '--zhituan-text-faint': ['#666d79', 1],
   /* 靛，不是浏览器蓝：这一套里没有一处强调色长在链接上，见 themes.css 的说明 */
-  '--moyu-accent': ['#2f4a9e', 1],
-  '--moyu-accent-hover': ['#273f86', 1],
-  '--moyu-accent-soft': ['#2f4a9e', 0.1],
-  '--moyu-danger': ['#b3261e', 1],
+  '--zhituan-accent': ['#2f4a9e', 1],
+  '--zhituan-accent-hover': ['#273f86', 1],
+  '--zhituan-accent-soft': ['#2f4a9e', 0.1],
+  '--zhituan-danger': ['#b3261e', 1],
   /* 后五个是这次新起名的令牌，纸白下的值就是它们各自取代的那个字面量 */
-  '--moyu-sunken': ['#eef0f3', 1],
-  '--moyu-sunken-hover': ['#e2e5ea', 1],
-  '--moyu-danger-soft': ['#fdf3f2', 1],
-  '--moyu-selected': ['#eef1fa', 1],
-  '--moyu-on-fill': ['#ffffff', 1]
+  '--zhituan-sunken': ['#eef0f3', 1],
+  '--zhituan-sunken-hover': ['#e2e5ea', 1],
+  '--zhituan-danger-soft': ['#fdf3f2', 1],
+  '--zhituan-selected': ['#eef1fa', 1],
+  '--zhituan-on-fill': ['#ffffff', 1]
 }
 
 /** 半径与字体：形状那一路的值。radius-md 的 12px 就是它一直以来的兜底值 */
 const PAPER_SHAPE = {
-  '--moyu-radius': '6px',
-  '--moyu-radius-sm': '4px',
-  '--moyu-radius-md': '12px',
-  '--moyu-radius-pill': '13px',
-  '--moyu-radius-tag': '8px',
-  '--moyu-radius-track': '7px',
-  /* 浮层不跟着底板变淡，用的是起始页的页底色（`--moyu-panel: var(--ground)`），
+  '--zhituan-radius': '6px',
+  '--zhituan-radius-sm': '4px',
+  '--zhituan-radius-md': '12px',
+  '--zhituan-radius-pill': '13px',
+  '--zhituan-radius-tag': '8px',
+  '--zhituan-radius-track': '7px',
+  /* 浮层不跟着底板变淡，用的是起始页的页底色（`--zhituan-panel: var(--ground)`），
      而起始页的页底这一版从纯白改成了 #f9fafb——那张裁剪弹窗跟着沉了一档，
      是这次重做的一部分，因此这里记的是新值 */
-  '--moyu-panel': ['#f9fafb', 1],
+  '--zhituan-panel': ['#f9fafb', 1],
   /* 设置页自己的页底：它比卡片面暗一档，卡片才浮得起来。这一条没动 */
-  '--moyu-ground': ['#f6f7f9', 1]
+  '--zhituan-ground': ['#f6f7f9', 1]
 }
 
 /**
  * 直角验到元素上，不停在变量层。
  *
  * 变量对了不等于元素用了它——把 `border-radius: 13px` 改成
- * `var(--moyu-radius-pill)` 时打错一个字母，值会静静地退回初始的 0，
+ * `var(--zhituan-radius-pill)` 时打错一个字母，值会静静地退回初始的 0，
  * 而 0 恰好也是终端世界的目标值，于是"改对了"和"改坏了"在磷绿下长得一样。
  * 因此在纸白下把这两处的实测圆角与改前的字面量对一次。
  */
@@ -254,44 +254,44 @@ const READABLE = [
 const RADIUS_SELECTORS = ['.address-toggle', '.tab', '.fallback', '.count', '.float-key', '.ball']
 
 const VAR_NAMES = [
-  '--moyu-alpha',
-  '--moyu-surface',
-  '--moyu-surface-hover',
-  '--moyu-surface-active',
-  '--moyu-border',
-  '--moyu-hairline',
-  '--moyu-surface-rgb',
-  '--moyu-surface-hover-rgb',
-  '--moyu-surface-active-rgb',
-  '--moyu-border-rgb',
-  '--moyu-hairline-rgb',
-  '--moyu-ink',
-  '--moyu-text',
-  '--moyu-text-dim',
-  '--moyu-text-faint',
-  '--moyu-accent',
-  '--moyu-accent-hover',
-  '--moyu-accent-soft',
-  '--moyu-danger',
-  '--moyu-sunken',
-  '--moyu-sunken-hover',
-  '--moyu-danger-soft',
-  '--moyu-selected',
-  '--moyu-on-fill',
-  '--moyu-radius',
-  '--moyu-radius-sm',
-  '--moyu-radius-md',
-  '--moyu-radius-pill',
-  '--moyu-radius-tag',
-  '--moyu-radius-track',
-  '--moyu-font',
-  '--moyu-panel',
-  '--moyu-ground',
+  '--zhituan-alpha',
+  '--zhituan-surface',
+  '--zhituan-surface-hover',
+  '--zhituan-surface-active',
+  '--zhituan-border',
+  '--zhituan-hairline',
+  '--zhituan-surface-rgb',
+  '--zhituan-surface-hover-rgb',
+  '--zhituan-surface-active-rgb',
+  '--zhituan-border-rgb',
+  '--zhituan-hairline-rgb',
+  '--zhituan-ink',
+  '--zhituan-text',
+  '--zhituan-text-dim',
+  '--zhituan-text-faint',
+  '--zhituan-accent',
+  '--zhituan-accent-hover',
+  '--zhituan-accent-soft',
+  '--zhituan-danger',
+  '--zhituan-sunken',
+  '--zhituan-sunken-hover',
+  '--zhituan-danger-soft',
+  '--zhituan-selected',
+  '--zhituan-on-fill',
+  '--zhituan-radius',
+  '--zhituan-radius-sm',
+  '--zhituan-radius-md',
+  '--zhituan-radius-pill',
+  '--zhituan-radius-tag',
+  '--zhituan-radius-track',
+  '--zhituan-font',
+  '--zhituan-panel',
+  '--zhituan-ground',
   '--radius',
   '--radius-sm',
   '--radius-pill',
   /*
-   * 起始页那一套名字（--ground/--text/…）。它们与上面那批 --moyu-* 是同一个
+   * 起始页那一套名字（--ground/--text/…）。它们与上面那批 --zhituan-* 是同一个
    * 主题里的两套叫法，值在 themes.css 里各写一遍。这一版把它们也读回来，
    * 是因为 Q6 要量起始页自己的对比度——那三套主题现在只落在起始页上，
    * 不量它就没有任何一处量过夜与磷绿的配色了。
@@ -372,8 +372,8 @@ const COLLECT = `(async () => {
   }
 
   // 面用三通道那一份：它不带 alpha，是"这张面本身是什么颜色"，
-  // 而 --moyu-surface 可能被 --moyu-alpha 乘淡过，拿它算对比度会随滑块浮动
-  const rgbTriple = vars['--moyu-surface-rgb'].split(/\\s+/).map(Number)
+  // 而 --zhituan-surface 可能被 --zhituan-alpha 乘淡过，拿它算对比度会随滑块浮动
+  const rgbTriple = vars['--zhituan-surface-rgb'].split(/\\s+/).map(Number)
   const face = rgbTriple.length === 3 && rgbTriple.every(Number.isFinite) ? rgbTriple : null
   const onFace = (name) => (face && colors[name] ? contrast(colors[name], face) : null)
 
@@ -503,11 +503,11 @@ const COLLECT = `(async () => {
     colors,
     face,
     contrast: {
-      ink: onFace('--moyu-ink'),
-      text: onFace('--moyu-text'),
-      'text-dim': onFace('--moyu-text-dim'),
-      'text-faint': onFace('--moyu-text-faint'),
-      accent: onFace('--moyu-accent')
+      ink: onFace('--zhituan-ink'),
+      text: onFace('--zhituan-text'),
+      'text-dim': onFace('--zhituan-text-dim'),
+      'text-faint': onFace('--zhituan-text-faint'),
+      accent: onFace('--zhituan-accent')
     },
     bg,
     radius,
@@ -588,19 +588,19 @@ const COLLECT_NOTICE = `(() => {
   return {
     theme: document.documentElement.dataset.theme ?? null,
     world: document.documentElement.dataset.world ?? null,
-    /* 主进程下发的高度（geometryVars 里的 --moyu-notice-h），与常量是同一个数 */
+    /* 主进程下发的高度（geometryVars 里的 --zhituan-notice-h），与常量是同一个数 */
     noticeVar: chromeRoot
-      ? getComputedStyle(chromeRoot).getPropertyValue('--moyu-notice-h').trim()
+      ? getComputedStyle(chromeRoot).getPropertyValue('--zhituan-notice-h').trim()
       : '',
     tokens: {
-      surface: toRgba(root.getPropertyValue('--moyu-surface').trim()),
-      surfaceHover: toRgba(root.getPropertyValue('--moyu-surface-hover').trim()),
-      hairline: toRgba(root.getPropertyValue('--moyu-hairline').trim()),
-      ink: toRgba(root.getPropertyValue('--moyu-ink').trim()),
-      textDim: toRgba(root.getPropertyValue('--moyu-text-dim').trim()),
-      accent: toRgba(root.getPropertyValue('--moyu-accent').trim()),
-      accentSoft: toRgba(root.getPropertyValue('--moyu-accent-soft').trim()),
-      radiusSm: root.getPropertyValue('--moyu-radius-sm').trim()
+      surface: toRgba(root.getPropertyValue('--zhituan-surface').trim()),
+      surfaceHover: toRgba(root.getPropertyValue('--zhituan-surface-hover').trim()),
+      hairline: toRgba(root.getPropertyValue('--zhituan-hairline').trim()),
+      ink: toRgba(root.getPropertyValue('--zhituan-ink').trim()),
+      textDim: toRgba(root.getPropertyValue('--zhituan-text-dim').trim()),
+      accent: toRgba(root.getPropertyValue('--zhituan-accent').trim()),
+      accentSoft: toRgba(root.getPropertyValue('--zhituan-accent-soft').trim()),
+      radiusSm: root.getPropertyValue('--zhituan-radius-sm').trim()
     },
     row: look('.notice-row'),
     text: look('.notice-text'),
@@ -636,7 +636,7 @@ const COLLECT_SCREEN = `(async () => {
     const el = document.querySelector(sel)
     return el ? el.classList.contains('on') : null
   }
-  const tabs = await window.moyu.tabs.list()
+  const tabs = await window.zhituan.tabs.list()
   const text = (sel) => document.querySelector(sel)?.textContent?.trim() ?? null
   return {
     screen: tabs.screen,
@@ -707,19 +707,19 @@ function checkPaperPinned(paper) {
     const got = paper.colors[name]
     if (!same(got, expectRgba(want))) bad.push(`${name} 要 ${show(expectRgba(want))} 实为 ${show(got)}`)
   }
-  if (!paper.vars['--moyu-font'].includes('Microsoft YaHei')) {
-    bad.push(`--moyu-font 该是无衬线栈，实为 ${paper.vars['--moyu-font'] || '(空)'}`)
+  if (!paper.vars['--zhituan-font'].includes('Microsoft YaHei')) {
+    bad.push(`--zhituan-font 该是无衬线栈，实为 ${paper.vars['--zhituan-font'] || '(空)'}`)
   }
-  if (paper.vars['--moyu-font'].includes('Cascadia Mono')) {
-    bad.push('--moyu-font 在界面里不该是等宽')
+  if (paper.vars['--zhituan-font'].includes('Cascadia Mono')) {
+    bad.push('--zhituan-font 在界面里不该是等宽')
   }
-  if (bad.length) fail('Q1', `纸白定格：界面那几条 --moyu-* 与定格表不一致 —— ${bad.join('；')}`)
-  else pass('Q1', `纸白定格：${Object.keys(PAPER_EXPECT).length + Object.keys(PAPER_SHAPE).length} 条 --moyu-* 与定格表逐条相同`)
+  if (bad.length) fail('Q1', `纸白定格：界面那几条 --zhituan-* 与定格表不一致 —— ${bad.join('；')}`)
+  else pass('Q1', `纸白定格：${Object.keys(PAPER_EXPECT).length + Object.keys(PAPER_SHAPE).length} 条 --zhituan-* 与定格表逐条相同`)
 }
 
 /** 一套主题的"指纹"：配色变了它就变，用来问"起始页那三套互不相同" */
 const fingerprint = (page) =>
-  ['--moyu-surface-rgb', '--moyu-hairline-rgb', '--moyu-ink', '--moyu-accent', '--moyu-ground', '--ground']
+  ['--zhituan-surface-rgb', '--zhituan-hairline-rgb', '--zhituan-ink', '--zhituan-accent', '--zhituan-ground', '--ground']
     .map((n) => page.vars[n])
     .join('|')
 
@@ -800,12 +800,12 @@ function checkScope(byPage) {
 function checkTerminalShape(home, chrome) {
   const bad = []
   for (const n of [
-    '--moyu-radius',
-    '--moyu-radius-sm',
-    '--moyu-radius-md',
-    '--moyu-radius-pill',
-    '--moyu-radius-tag',
-    '--moyu-radius-track',
+    '--zhituan-radius',
+    '--zhituan-radius-sm',
+    '--zhituan-radius-md',
+    '--zhituan-radius-pill',
+    '--zhituan-radius-tag',
+    '--zhituan-radius-track',
     '--radius',
     '--radius-sm',
     '--radius-pill'
@@ -813,8 +813,8 @@ function checkTerminalShape(home, chrome) {
     // 计算值一律是 px，0 会写成 0px
     if (!/^0(px)?$/.test(home.vars[n])) bad.push(`起始页的 ${n} 该是 0，实为 ${home.vars[n] || '(空)'}`)
   }
-  if (!home.vars['--moyu-font'].includes('Cascadia Mono')) {
-    bad.push(`起始页的 --moyu-font 该是等宽栈，实为 ${home.vars['--moyu-font'] || '(空)'}`)
+  if (!home.vars['--zhituan-font'].includes('Cascadia Mono')) {
+    bad.push(`起始页的 --zhituan-font 该是等宽栈，实为 ${home.vars['--zhituan-font'] || '(空)'}`)
   }
   if (!home.vars['--font'].includes('Cascadia Mono')) {
     bad.push(`起始页的 --font 该是等宽栈（终端世界里展示字就是它），实为 ${home.vars['--font'] || '(空)'}`)
@@ -833,7 +833,7 @@ function checkTerminalShape(home, chrome) {
   else {
     pass(
       'Q3',
-      `终端形态只在起始页：磷绿下那一页半径全 0、字体等宽（${home.vars['--moyu-font'].split(',')[0]}）、字带发光，` +
+      `终端形态只在起始页：磷绿下那一页半径全 0、字体等宽（${home.vars['--zhituan-font'].split(',')[0]}）、字带发光，` +
         `而界面的字仍是无衬线栈、不发光`
     )
   }
@@ -843,7 +843,7 @@ function checkTerminalShape(home, chrome) {
  * 直角验到元素上。
  *
  * 变量对了不等于元素用了它——把 `border-radius: 13px` 改成
- * `var(--moyu-radius-pill)` 时打错一个字母，值会静静地退回初始的 0，
+ * `var(--zhituan-radius-pill)` 时打错一个字母，值会静静地退回初始的 0，
  * 而 0 恰好也是终端世界的目标值，于是"改对了"和"改坏了"在磷绿下长得一样。
  * 因此在纸白下把这两处的实测圆角与改前的字面量对一次。
  *
@@ -874,19 +874,19 @@ function checkRadius(paper, crt) {
 
 function checkAlpha(alpha) {
   const bad = []
-  if (alpha.vars['--moyu-alpha'] !== '0.4') bad.push(`--moyu-alpha 是 ${alpha.vars['--moyu-alpha'] || '(空)'}，该是 0.4`)
-  const surface = alpha.colors['--moyu-surface']
-  if (!surface) bad.push('--moyu-surface 读不成颜色（多半是 var() 没接上）')
+  if (alpha.vars['--zhituan-alpha'] !== '0.4') bad.push(`--zhituan-alpha 是 ${alpha.vars['--zhituan-alpha'] || '(空)'}，该是 0.4`)
+  const surface = alpha.colors['--zhituan-surface']
+  if (!surface) bad.push('--zhituan-surface 读不成颜色（多半是 var() 没接上）')
   else {
-    if (surface[3] !== 0.4) bad.push(`--moyu-surface 的 alpha 是 ${surface[3]}，该是 0.4`)
-    if (surface.slice(0, 3).join() !== '255,255,255') bad.push(`--moyu-surface 的色相被改动了：${show(surface)}`)
+    if (surface[3] !== 0.4) bad.push(`--zhituan-surface 的 alpha 是 ${surface[3]}，该是 0.4`)
+    if (surface.slice(0, 3).join() !== '255,255,255') bad.push(`--zhituan-surface 的色相被改动了：${show(surface)}`)
   }
   // 强调色是"状态"，不跟着底板变淡
-  if (alpha.colors['--moyu-accent'] && alpha.colors['--moyu-accent'][3] !== 1) {
-    bad.push(`--moyu-accent 也跟着淡了：${show(alpha.colors['--moyu-accent'])}`)
+  if (alpha.colors['--zhituan-accent'] && alpha.colors['--zhituan-accent'][3] !== 1) {
+    bad.push(`--zhituan-accent 也跟着淡了：${show(alpha.colors['--zhituan-accent'])}`)
   }
   if (bad.length) fail('Q4', `背景透明度没接上 —— ${bad.join('；')}`)
-  else pass('Q4', '背景透明度仍然只淡底板：0.4 时 --moyu-surface 是 rgb(255 255 255 / 0.4)，强调色不动')
+  else pass('Q4', '背景透明度仍然只淡底板：0.4 时 --zhituan-surface 是 rgb(255 255 255 / 0.4)，强调色不动')
 }
 
 /**
@@ -951,7 +951,7 @@ function checkTransparent(byPage) {
  *
  * 两头都量，因为这一版主题只剩起始页那一份在用：
  *
- * · 界面那一头是**纸白**——--moyu-* 对 --moyu-surface-rgb 那一张面。这是
+ * · 界面那一头是**纸白**——--zhituan-* 对 --zhituan-surface-rgb 那一张面。这是
  *   上一版量过的同一批数，只是不再逐主题量（三套相同这件事 Q2 已经证过）。
  * · 起始页那一头是**三套主题各自的配色**——--text/--text-secondary/--text-tertiary
  *   对 --ground。不量它，夜与磷绿这两套配色就一处也没量过了：它们今天只落在
@@ -1072,7 +1072,7 @@ function checkNoticeDrawn(withNotice) {
     }
     const bodyW = page.viewport[0] - (page.rail?.w ?? 0)
     if (page.noticeVar !== `${NOTICE_H}px`) {
-      bad.push(`${t.id} 的 --moyu-notice-h 是 ${page.noticeVar || '(空)'}，该是 ${NOTICE_H}px`)
+      bad.push(`${t.id} 的 --zhituan-notice-h 是 ${page.noticeVar || '(空)'}，该是 ${NOTICE_H}px`)
     }
     if (row.box.h !== NOTICE_H) bad.push(`${t.id} 的提示条高 ${row.box.h}px，该是 ${NOTICE_H}px`)
     if (row.box.w !== bodyW) bad.push(`${t.id} 的提示条宽 ${row.box.w}px，正文那一栏该是 ${bodyW}px`)
@@ -1110,7 +1110,7 @@ function checkNoticeDrawn(withNotice) {
  *   在纸白下与令牌恰好相等，光看「一致」看不出来）；
  * · 三套入参下相同，保证它**没有**偷偷跟着 ui.homeTheme 走——那正是这一版
  *   收回边界时要防的回头路；
- * · 纸白的 --moyu-surface 是纯白（Q1 钉着），于是「底色 == 令牌」同时也意味着
+ * · 纸白的 --zhituan-surface 是纯白（Q1 钉着），于是「底色 == 令牌」同时也意味着
  *   这条提示条在默认这一套下是白的，而不是碰巧与某个深色相等。
  */
 function checkNoticeTokens(withNotice) {
@@ -1286,11 +1286,11 @@ function checkScreens(page, home, settings) {
  * PDF 阅读页的墨色（Q14）。
  *
  * 用户报的就是这一条：磷绿下整本书的字都成了荧光绿。病根不在 PDF 那一页，
- * 而在边界划错了——1.3.0 让 PDF 那一页也写主题名，于是它的 `--moyu-ink`
+ * 而在边界划错了——1.3.0 让 PDF 那一页也写主题名，于是它的 `--zhituan-ink`
  * 在磷绿下是 #57f08c，键控拿它当墨色把整页每个像素的 RGB 都写成那个绿。
  * 1.5.1 把主题收回起始页，这一页落回 `:root`（纸白，近黑）。
  *
- * 量的是**它的输入**：算好的 --moyu-ink。读它的那一行在 PdfApp 里只有一行，
+ * 量的是**它的输入**：算好的 --zhituan-ink。读它的那一行在 PdfApp 里只有一行，
  * 且只在模块初始化时跑一次、之后再不重读（见那里的注释），因此「这个变量在
  * 三套主题下都是纸白那一份」就足够说明它画出来的字也是那一份。真去画一本书
  * 是另一个探针的事（spike/pdf-scheme.js 逐像素量过键控的结果）。
@@ -1303,12 +1303,12 @@ function checkPdfInk(byPage) {
   const bad = []
   const pdf = byPage.pdf
   /* 基准那一份 = `:root` 里那个值，也正是起始页在纸白下拿到的那个 */
-  const base = byPage.home.paper.vars['--moyu-ink']
-  const crt = byPage.home['crt-green'].vars['--moyu-ink']
+  const base = byPage.home.paper.vars['--zhituan-ink']
+  const crt = byPage.home['crt-green'].vars['--zhituan-ink']
   for (const t of THEMES) {
-    const got = pdf[t.id].vars['--moyu-ink']
+    const got = pdf[t.id].vars['--zhituan-ink']
     if (got !== base) {
-      bad.push(`${t.id} 下 PDF 那一页读到的 --moyu-ink 是 ${got || '(空)'}，该是基准的 ${base}`)
+      bad.push(`${t.id} 下 PDF 那一页读到的 --zhituan-ink 是 ${got || '(空)'}，该是基准的 ${base}`)
     }
     if (t.id === 'crt-green' && got === crt) {
       bad.push(`磷绿下 PDF 那一页的墨色正是磷绿的 ${crt}——键控会把整本书写成这个颜色`)
@@ -1319,7 +1319,7 @@ function checkPdfInk(byPage) {
     pass(
       'Q14',
       `PDF 阅读页的墨色不跟主题换：纸白 / 暗夜 / 磷绿三套入参下读到的都是 ${base}（` +
-        `磷绿那一套自己的 --moyu-ink 是 ${crt}，没有落到这一页上）`
+        `磷绿那一套自己的 --zhituan-ink 是 ${crt}，没有落到这一页上）`
     )
   }
 }
@@ -1457,7 +1457,7 @@ app.whenReady().then(async () => {
       railFont: page.body.fontFamily,
       settingsGround: byPage.settings[t.id].bg['html'],
       homeGround: byPage.home[t.id].bg['html'],
-      pdfInk: byPage.pdf[t.id].vars['--moyu-ink']
+      pdfInk: byPage.pdf[t.id].vars['--zhituan-ink']
     }
   }
   for (const [id, row] of Object.entries(painted)) {
@@ -1502,7 +1502,7 @@ app.whenReady().then(async () => {
    */
   for (const t of THEMES) {
     console.log(
-      `PDFINK ${t.id.padEnd(10)} 这一页读到 ${byPage.pdf[t.id].vars['--moyu-ink']} | 磷绿那一套自己的 --moyu-ink ${byPage.home['crt-green'].vars['--moyu-ink']}`
+      `PDFINK ${t.id.padEnd(10)} 这一页读到 ${byPage.pdf[t.id].vars['--zhituan-ink']} | 磷绿那一套自己的 --zhituan-ink ${byPage.home['crt-green'].vars['--zhituan-ink']}`
     )
   }
 

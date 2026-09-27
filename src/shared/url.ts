@@ -7,10 +7,10 @@
 /**
  * 自家页面用的伪协议。
  *
- * 起始页与系统设置对外都只以 moyu:// 示人，真实的 file:// 路径既不显示，
+ * 起始页与系统设置对外都只以 zhituan:// 示人，真实的 file:// 路径既不显示，
  * 也不该显示——那会暴露本机目录结构。
  */
-const OWN_SCHEME = 'moyu://'
+const OWN_SCHEME = 'zhituan://'
 
 /** 这个地址是不是自家页面（起始页、系统设置） */
 export function isOwnUrl(url: string | null | undefined): boolean {
@@ -140,12 +140,28 @@ export function isLocalPdf(url: string | null | undefined): boolean {
 }
 
 /**
+ * 本机 EPUB：`file:` 协议、且文件名以 `.epub` 结尾。
+ *
+ * 与 isLocalPdf 是同一族的判据，理由也一样：Chromium 不认这个格式（`will-download`
+ * 到场、`loadURL` 当场以 ERR_FAILED 结束，实测见 docs/spike-findings.md 的 Q63），
+ * 所以它不能当普通网页交给 Chromium，得开成自家的阅读页（services/bookReader.ts）。
+ *
+ * 地址栏那条路也归这里管：`file:` 在 HAS_SCHEME 白名单里，用户把
+ * `file:///C:/书/xxx.epub` 粘进地址栏时同样会经过 TabManager.create 的这一处判定，
+ * 于是粘贴进来的书与选文件框选中的书走的是同一条路。
+ */
+export function isLocalEpub(url: string | null | undefined): boolean {
+  if (typeof url !== 'string') return false
+  return fileNameOf(url)?.toLowerCase().endsWith('.epub') ?? false
+}
+
+/**
  * 本机文件：`file:` 协议。**离线阅读读的就是它。**
  *
  * 与 isLocalPdf 分工不同：那个回答「谁来排这一页」（自家阅读页 vs 交给
  * Chromium），只管 PDF；这个回答「界面上的阅读透明度此刻管不管得着」，
  * 本机 TXT 与自家 PDF 阅读页都算，而网页（http/https，以及自家那两屏的
- * `moyu://` 伪地址）一律不算——`ui.readerOpacity` 永远不许落到网页头上。
+ * `zhituan://` 伪地址）一律不算——`ui.readerOpacity` 永远不许落到网页头上。
  *
  * 因此判据只有「协议是不是 file:」这一条：本机 PDF 在**界面这一侧**对外
  * 露的正是那个 `file:///…/book.pdf` 地址（阅读页的地址只属于视图内部，

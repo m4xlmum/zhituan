@@ -10,16 +10,16 @@
  * 1.3.0 把主题铺到整个界面，靠的正是「多份文档加载同一份主题层，再各自在根上写同一个
  * 属性」；1.5.1 把这条收回到起始页——四份文档不再写属性，就落回 `:root` 那一组，
  * 而 `:root` 给的正是纸白。共用一份还有另一头的好处：三套配色的基准只有一处，
- * 改它五份一起改。--moyu-alpha 走的是同一条共用路线（见 useBackgroundAlpha）。
+ * 改它五份一起改。--zhituan-alpha 走的是同一条共用路线（见 useBackgroundAlpha）。
  *
  * 同一个主题里写着三套名字，它们指向同一份颜色：
  *   --ground/--text/…        起始页用（含它自己的排版）
- *   --moyu-*                 界面（顶栏、地址栏、右栏、悬浮球、面板）、系统设置与 PDF 阅读页用
- *   --moyu-ground            系统设置那一页自己的底板
+ *   --zhituan-*                 界面（顶栏、地址栏、右栏、悬浮球、面板）、系统设置与 PDF 阅读页用
+ *   --zhituan-ground            系统设置那一页自己的底板
  * 三套名字是历史造成的，值统一在这里给。改配色只改这个文件。
  *
  * 界面那几块**面**写成 `rgb 三通道`（不带 alpha），由 tokens.css 拼上
- * --moyu-alpha——只有这样才能让「背景透明度」那条滑块把底板整体调淡。
+ * --zhituan-alpha——只有这样才能让「背景透明度」那条滑块把底板整体调淡。
  * 这也正是起始页那几个 rgba 面在这里要另给一份等价三通道的原因：起始页的
  * hover 是「半透明绿叠在黑底上」，而界面的面必须能被一个变量整体乘淡。
  *
@@ -74,54 +74,54 @@
   /*
    * 展示字：起始页报头与栏目线的字。它与上面那条 --font 是两件事——
    * --font 是**界面**的字，用平台自己的正好；展示字是那一页的门面，
-   * 必须是自己带着的（assets/fonts/moyu-display-serif.woff2，
+   * 必须是自己带着的（assets/fonts/zhituan-display-serif.woff2，
    * 做法与出处见 scripts/make-display-font.mjs）。
    *
    * 后面那几串是兜底，不是候选：都是衬线中文，真轮到它们时排版意图还在，
    * 只是不精确。**不要**把无衬线往这一串里塞。
    */
-  --font-display: 'Moyu Display Serif', 'Noto Serif SC', 'Source Han Serif SC', 'SimSun',
+  --font-display: 'Zhituan Display Serif', 'Noto Serif SC', 'Source Han Serif SC', 'SimSun',
     'Songti SC', serif;
 
 
   /* 界面 */
-  --moyu-surface-rgb: 255 255 255;
-  --moyu-surface-hover-rgb: 243 244 246;
-  --moyu-surface-active-rgb: 232 234 238;
+  --zhituan-surface-rgb: 255 255 255;
+  --zhituan-surface-hover-rgb: 243 244 246;
+  --zhituan-surface-active-rgb: 232 234 238;
   /* 细线与起始页那一对同一个值：同一个主题里只有一种细线，
      否则顶栏的边和起始页的分节线会差一个色号，挨着看就是两条线 */
-  --moyu-border-rgb: 210 214 221;
-  --moyu-hairline-rgb: 230 232 236;
+  --zhituan-border-rgb: 210 214 221;
+  --zhituan-hairline-rgb: 230 232 236;
 
-  --moyu-ink: #15181d;
-  --moyu-text: #15181d;
-  --moyu-text-dim: #5a6270;
-  --moyu-text-faint: #666d79;
+  --zhituan-ink: #15181d;
+  --zhituan-text: #15181d;
+  --zhituan-text-dim: #5a6270;
+  --zhituan-text-faint: #666d79;
 
-  --moyu-accent: #2f4a9e;
-  --moyu-accent-hover: #273f86;
-  --moyu-accent-soft: rgba(47, 74, 158, 0.1);
-  --moyu-danger: #b3261e;
+  --zhituan-accent: #2f4a9e;
+  --zhituan-accent-hover: #273f86;
+  --zhituan-accent-soft: rgba(47, 74, 158, 0.1);
+  --zhituan-danger: #b3261e;
 
   /*
    * 「凹下去」的面：设置页左栏、行内代码的底。
    *
-   * 它与 --moyu-surface 是两种面——面是浮在页底上的卡片（比页底亮），
+   * 它与 --zhituan-surface 是两种面——面是浮在页底上的卡片（比页底亮），
    * 这个是页上的一道凹槽（比页底暗）。浅色主题下两者只差一点点，
    * 深色主题下方向正好相反，所以不能拿同一个名字凑合。
    */
-  --moyu-sunken: #eef0f3;
-  --moyu-sunken-hover: #e2e5ea;
-  --moyu-danger-soft: #fdf3f2;
+  --zhituan-sunken: #eef0f3;
+  --zhituan-sunken-hover: #e2e5ea;
+  --zhituan-danger-soft: #fdf3f2;
 
   /*
    * 「这一格是选中的」那张面。设置页上被选中的按钮用它当底，字是强调色。
    *
-   * 它为什么不直接借 --moyu-accent-soft：那张面上要**压字**，而且要求 4.5:1。
+   * 它为什么不直接借 --zhituan-accent-soft：那张面上要**压字**，而且要求 4.5:1。
    * 靛这一档很深（压白 8.1:1），因此这里有余量把面染得看得见：
    * #eef1fa 上压强调色是 7.3:1，比要求宽出一倍多。
    */
-  --moyu-selected: #eef1fa;
+  --zhituan-selected: #eef1fa;
 
   /*
    * 画在实色填充（强调色、危险色）之上的字。
@@ -132,14 +132,14 @@
    * 而不是钉死成白。它盖的是「填充 + 填充上的字」这一对，两个填充色在
    * 三套主题下深浅同步，一个值够用。
    */
-  --moyu-on-fill: #ffffff;
+  --zhituan-on-fill: #ffffff;
 
   /*
    * 半径与字体只有这一份，两个深色主题不重写：形状是形状，配色是配色，
    * 把它们抄进每一段配色里只会多出两处迟早会走样的地方。
    *
    * radius-md 是 12px 而不是 8px：它今天只被裁剪弹窗用着
-   * （BallIconCropper 的 `var(--moyu-radius-md, 12px)`），那个兜底值就是
+   * （BallIconCropper 的 `var(--zhituan-radius-md, 12px)`），那个兜底值就是
    * 它一直以来的实际取值。这里补声明是为了让深色主题底下那块面板别再弹出
    * 一片纯白，值则必须跟兜底一致——否则「零回归」当场就破了。
    *
@@ -148,21 +148,21 @@
    * 透明度滑轨 7px），而写死的圆角没法被终端世界抹平——留着它们，磷绿下就只剩
    * 一半是直角。取个名字是为了能一处改掉，值则必须逐条相同。
    */
-  --moyu-radius: 6px;
-  --moyu-radius-sm: 4px;
-  --moyu-radius-md: 12px;
-  --moyu-radius-pill: 13px;
-  --moyu-radius-tag: 8px;
-  --moyu-radius-track: 7px;
-  --moyu-font: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', system-ui, sans-serif;
+  --zhituan-radius: 6px;
+  --zhituan-radius-sm: 4px;
+  --zhituan-radius-md: 12px;
+  --zhituan-radius-pill: 13px;
+  --zhituan-radius-tag: 8px;
+  --zhituan-radius-track: 7px;
+  --zhituan-font: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', system-ui, sans-serif;
 
   /* 浮层（裁剪弹窗这类）不跟着底板变淡，所以给它一个不带 alpha 的面 */
-  --moyu-panel: var(--ground);
+  --zhituan-panel: var(--ground);
 
   /* 系统设置那一页自己的底板。与起始页的 --ground 不是同一个值：
      设置页整页都是卡片，页底要再暗一档卡片才浮得起来，
      而起始页的页底是「纸」。这个差别一直存在，不是这次改出来的 */
-  --moyu-ground: #f6f7f9;
+  --zhituan-ground: #f6f7f9;
 }
 
 /* 暗夜。深色但不发光：屏幕不亮，晚上眼睛舒服 */
@@ -184,31 +184,31 @@
   --accent-hover: #a8c0f2;
   --accent-soft: rgba(142, 169, 234, 0.14);
 
-  --moyu-surface-rgb: 18 21 28;
-  --moyu-surface-hover-rgb: 27 31 40;
-  --moyu-surface-active-rgb: 35 40 51;
-  --moyu-border-rgb: 51 59 74;
-  --moyu-hairline-rgb: 36 42 54;
+  --zhituan-surface-rgb: 18 21 28;
+  --zhituan-surface-hover-rgb: 27 31 40;
+  --zhituan-surface-active-rgb: 35 40 51;
+  --zhituan-border-rgb: 51 59 74;
+  --zhituan-hairline-rgb: 36 42 54;
 
-  --moyu-ink: #e7e9ee;
-  --moyu-text: #e7e9ee;
-  --moyu-text-dim: #a3aab8;
-  --moyu-text-faint: #7e8697;
+  --zhituan-ink: #e7e9ee;
+  --zhituan-text: #e7e9ee;
+  --zhituan-text-dim: #a3aab8;
+  --zhituan-text-faint: #7e8697;
 
-  --moyu-accent: #8ea9ea;
-  --moyu-accent-hover: #a8c0f2;
-  --moyu-accent-soft: rgba(142, 169, 234, 0.14);
-  --moyu-danger: #ff9a9a;
+  --zhituan-accent: #8ea9ea;
+  --zhituan-accent-hover: #a8c0f2;
+  --zhituan-accent-soft: rgba(142, 169, 234, 0.14);
+  --zhituan-danger: #ff9a9a;
 
   /* 页底 #101216 再压暗一档。悬停反过来要抬亮，否则在深色下「悬停」与
      「没悬停」看不出区别 */
-  --moyu-sunken: #0b0d10;
-  --moyu-sunken-hover: #1a1d23;
-  --moyu-danger-soft: rgba(255, 154, 154, 0.14);
-  --moyu-selected: rgba(142, 169, 234, 0.12);
-  --moyu-on-fill: #12151c;
+  --zhituan-sunken: #0b0d10;
+  --zhituan-sunken-hover: #1a1d23;
+  --zhituan-danger-soft: rgba(255, 154, 154, 0.14);
+  --zhituan-selected: rgba(142, 169, 234, 0.12);
+  --zhituan-on-fill: #12151c;
 
-  --moyu-ground: #101216;
+  --zhituan-ground: #101216;
 }
 
 /* 磷绿。P1 单色荧光屏：绿字、黑底、扫描线、余辉。终端世界目前唯一的配色 */
@@ -230,35 +230,35 @@
   --accent-hover: #9bffc2;
   --accent-soft: rgba(107, 255, 164, 0.14);
 
-  /* 界面那三个面要的是「能被 --moyu-alpha 整体乘淡」的三通道，
+  /* 界面那三个面要的是「能被 --zhituan-alpha 整体乘淡」的三通道，
      因此不能直接搬上面那两个 rgba。这里给的是等价实色：
      一个面本身就是屏底（荧光屏没有卡片），另外两档是 0.08 与 0.15 的
      荧光绿叠在 #050b07 上之后的结果——与起始页那两个 hover 严格同色 */
-  --moyu-surface-rgb: 5 11 7;
-  --moyu-surface-hover-rgb: 12 29 18;
-  --moyu-surface-active-rgb: 17 45 27;
-  --moyu-border-rgb: 30 107 53;
-  --moyu-hairline-rgb: 18 64 31;
+  --zhituan-surface-rgb: 5 11 7;
+  --zhituan-surface-hover-rgb: 12 29 18;
+  --zhituan-surface-active-rgb: 17 45 27;
+  --zhituan-border-rgb: 30 107 53;
+  --zhituan-hairline-rgb: 18 64 31;
 
-  --moyu-ink: #57f08c;
-  --moyu-text: #57f08c;
-  --moyu-text-dim: #3cc46f;
-  --moyu-text-faint: #2b9455;
+  --zhituan-ink: #57f08c;
+  --zhituan-text: #57f08c;
+  --zhituan-text-dim: #3cc46f;
+  --zhituan-text-faint: #2b9455;
 
-  --moyu-accent: #6bffa4;
-  --moyu-accent-hover: #9bffc2;
-  --moyu-accent-soft: rgba(107, 255, 164, 0.14);
-  --moyu-danger: #ff9a7a;
+  --zhituan-accent: #6bffa4;
+  --zhituan-accent-hover: #9bffc2;
+  --zhituan-accent-soft: rgba(107, 255, 164, 0.14);
+  --zhituan-danger: #ff9a7a;
 
   /* 这一套的页底已经接近全黑（#030704），凹面只能再往黑里走一步。
      悬停用的是那三个三通道面里的同一档绿，与右栏的悬停是同一种绿 */
-  --moyu-sunken: #010402;
-  --moyu-sunken-hover: #0c1d12;
-  --moyu-danger-soft: rgba(255, 154, 122, 0.16);
-  --moyu-selected: rgba(107, 255, 164, 0.14);
-  --moyu-on-fill: #050b07;
+  --zhituan-sunken: #010402;
+  --zhituan-sunken-hover: #0c1d12;
+  --zhituan-danger-soft: rgba(255, 154, 122, 0.16);
+  --zhituan-selected: rgba(107, 255, 164, 0.14);
+  --zhituan-on-fill: #050b07;
 
-  --moyu-ground: #030704;
+  --zhituan-ground: #030704;
 }
 
 /*
@@ -279,13 +279,13 @@ html[data-world='terminal'] {
      报头与栏目线也一样。那一页在终端世界里换的是**排版**，不是字体 */
   --font-display: var(--font);
 
-  --moyu-font: 'Cascadia Mono', Consolas, 'Sarasa Mono SC', 'Microsoft YaHei', monospace;
-  --moyu-radius: 0;
-  --moyu-radius-sm: 0;
-  --moyu-radius-md: 0;
-  --moyu-radius-pill: 0;
-  --moyu-radius-tag: 0;
-  --moyu-radius-track: 0;
+  --zhituan-font: 'Cascadia Mono', Consolas, 'Sarasa Mono SC', 'Microsoft YaHei', monospace;
+  --zhituan-radius: 0;
+  --zhituan-radius-sm: 0;
+  --zhituan-radius-md: 0;
+  --zhituan-radius-pill: 0;
+  --zhituan-radius-tag: 0;
+  --zhituan-radius-track: 0;
 }
 
 /*

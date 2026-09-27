@@ -34,13 +34,13 @@ export function useWindowResize() {
       // 见上
     }
     event.preventDefault()
-    window.moyu.win.resizeStart(edge)
+    window.zhituan.win.resizeStart(edge)
   }
 
   function end(): void {
     if (!resizing.value) return
     resizing.value = null
-    window.moyu.win.resizeEnd()
+    window.zhituan.win.resizeEnd()
   }
 
   /**

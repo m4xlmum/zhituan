@@ -43,11 +43,11 @@ const text = computed(() => {
         : `正在下载更新 ${state.value?.percent ?? 0}%`
     case 'ready':
       // 不说「重启」，说清楚是「重启之后才会装上」：现在点别的都不会装
-      return `摸鱼阅读 ${version.value} 已下载，重启后安装`
+      return `纸团 ${version.value} 已下载，重启后安装`
     case 'error':
       return `更新下载失败：${state.value?.message || '原因不明'}`
     default:
-      return `摸鱼阅读 ${version.value} 可用`
+      return `纸团 ${version.value} 可用`
   }
 })
 
@@ -77,7 +77,7 @@ const action = computed<{ label: string; run: () => void } | null>(() => {
  * 用普通标签页而不是系统浏览器——这个软件的窗口本来就该是它的全部出口。
  */
 function openReleases(): void {
-  void window.moyu.tabs.create({ url: `${UPDATE_FEED_BASE}/releases/latest`, activate: true })
+  void window.zhituan.tabs.create({ url: `${UPDATE_FEED_BASE}/releases/latest`, activate: true })
 }
 
 function dismiss(): void {
@@ -129,13 +129,13 @@ function dismiss(): void {
 .notice-row {
   position: relative;
   flex: 0 0 auto;
-  height: var(--moyu-notice-h);
+  height: var(--zhituan-notice-h);
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 0 8px;
-  background: var(--moyu-surface);
-  border-bottom: 1px solid var(--moyu-hairline);
+  background: var(--zhituan-surface);
+  border-bottom: 1px solid var(--zhituan-hairline);
 }
 
 .notice-text {
@@ -145,7 +145,7 @@ function dismiss(): void {
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 12px;
-  color: var(--moyu-text-dim);
+  color: var(--zhituan-text-dim);
 }
 
 /*
@@ -156,15 +156,15 @@ function dismiss(): void {
   flex: 0 0 auto;
   height: 22px;
   padding: 0 8px;
-  border-radius: var(--moyu-radius-sm);
-  background: var(--moyu-surface-hover);
-  color: var(--moyu-ink);
+  border-radius: var(--zhituan-radius-sm);
+  background: var(--zhituan-surface-hover);
+  color: var(--zhituan-ink);
   font-size: 12px;
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 
 .notice-btn:hover {
-  background: var(--moyu-surface-active);
+  background: var(--zhituan-surface-active);
 }
 
 /*
@@ -173,13 +173,13 @@ function dismiss(): void {
  * 这一条本来就只有 30px 高，填满的红或蓝一条会把整行变成一个色块。
  */
 .notice-btn.primary {
-  color: var(--moyu-accent);
-  background: var(--moyu-accent-soft);
+  color: var(--zhituan-accent);
+  background: var(--zhituan-accent-soft);
 }
 
 .notice-btn.primary:hover {
-  color: var(--moyu-on-fill);
-  background: var(--moyu-accent);
+  color: var(--zhituan-on-fill);
+  background: var(--zhituan-accent);
 }
 
 .notice-btn.icon {
@@ -188,11 +188,11 @@ function dismiss(): void {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--moyu-text-dim);
+  color: var(--zhituan-text-dim);
 }
 
 .notice-btn.icon:hover {
-  color: var(--moyu-ink);
+  color: var(--zhituan-ink);
 }
 
 .notice-progress {
@@ -200,7 +200,7 @@ function dismiss(): void {
   left: 0;
   bottom: 0;
   height: 2px;
-  background: var(--moyu-accent);
+  background: var(--zhituan-accent);
   transition: width 160ms linear;
 }
 </style>
