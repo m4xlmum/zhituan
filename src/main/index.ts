@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { BROADCAST } from '@shared/ipc'
 import type { OpenPopoverRequest } from '@shared/ipc'
-import { UPDATE_CHECK_DELAY_MS, UPDATE_FEED_BASE } from '@shared/constants'
+import { QUIT_WATCHDOG_MS, UPDATE_CHECK_DELAY_MS, UPDATE_FEED_BASE } from '@shared/constants'
 import type { Rect } from '@shared/types'
 import type { AppContext } from './context'
 import { registerBrowserIpc } from './ipc/registerBrowserIpc'
@@ -175,8 +175,9 @@ function bootstrap(): void {
     rendererUrl: rendererUrl('index'),
     onVisibilityChange: (visible) => {
       // 隐藏（收起成球 / 进托盘 / 最小化）时网页那一侧要暂停正在播的媒体并静音，
-      // 回到展开态再恢复——见 TabManager.setBodyVisible
-      tabsRef?.setBodyVisible(visible, config.get().stealth.muteMediaOnCollapse)
+      // 回到展开态再恢复。哪些该恢复不在这里判：窗口这一侧只知道「露没露出来」，
+      // 后台那张标签还归「切走时暂停」那条规矩管（见 TabManager.applyMediaState）。
+      tabsRef?.setBodyVisible(visible)
       // 面板不跟着窗口走，窗口一没就得自己收掉（见 popoverRef 的注释）
       if (!visible) popoverRef?.close()
     },
@@ -235,10 +236,15 @@ function bootstrap(): void {
    * 同一处还要接第二条线：**已经开着的**本机文件（离线阅读的 TXT）拿不到广播——
    * 它们不是自家页面，没有那座桥，正文的透明度只能由主进程往它们的视图里注入。
    * 而这件事同样「写配置的路不止一条」，因此也挂在这里，与广播同一处。
+   *
+   * 第三条线同理：媒体那两条规矩（收起时暂停 / 切走时暂停）改完也要当场重算，
+   * 否则用户关了开关，后台那张还得等到下一次切标签才被放起来——见
+   * TabManager.refreshMediaState。
    */
   config.subscribe((next) => {
     broadcast(BROADCAST.configChanged, next)
     tabs.refreshReaderOpacity()
+    tabs.refreshMediaState()
   })
 
   const popover = new PopoverWindowService(
@@ -285,7 +291,28 @@ function bootstrap(): void {
     controller.showForeground()
   }
 
+  /**
+   * 退出看门狗：退出流程的最长时间预算。
+   *
+   * 正常路径是 app.quit() → before-quit 落盘 → will-quit 里 app.exit(0)，
+   * 毫秒级的事。但 before-quit 要同步写五份文件，其中任何一次被拖住，
+   * 整条退出链就停在半路、进程迟迟不退——见 QUIT_WATCHDOG_MS 那段注释。
+   *
+   * 更新流程里这一步的代价最大：应用内「更新并重启」是先起安装程序、
+   * 宽限期过后才退出（updateService.spawnInstaller），安装程序正等在外面
+   * 替换文件。退出卡住，用户看到的就是「应用关了，然后什么都没有」。
+   *
+   * will-quit 会负责清掉它，所以正常退出不会因此多等哪怕一毫秒。
+   */
+  let quitWatchdog: NodeJS.Timeout | null = null
+
   function quit(): void {
+    if (!quitWatchdog) {
+      quitWatchdog = setTimeout(() => {
+        log.warn(`退出在 ${QUIT_WATCHDOG_MS}ms 内没有走完，强制终止进程`)
+        app.exit(0)
+      }, QUIT_WATCHDOG_MS)
+    }
     app.quit()
   }
 
@@ -454,6 +481,11 @@ function bootstrap(): void {
   })
 
   app.on('will-quit', () => {
+    // 走到这里说明退出链没卡住，那把看门狗撤掉——它只是「走不到这里」的保险
+    if (quitWatchdog) {
+      clearTimeout(quitWatchdog)
+      quitWatchdog = null
+    }
     // 顺序有讲究：先停掉还在轮询的定时器，再拆窗口。
     // 反过来的话，定时器会在窗口销毁后继续 tick，撞上已销毁的对象，
     // 异常会冒到主进程的未捕获异常处理器上，弹框把退出流程卡住。

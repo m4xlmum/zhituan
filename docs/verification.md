@@ -2,6 +2,22 @@
 
 `spike/` 下有几个一次性工具，用于在真机上复核关键行为：
 
+> **在把 Electron 当 Node 用的宿主 shell 里跑探针**（有些 CLI 包装器会设
+> `ELECTRON_RUN_AS_NODE=1`）：`npx electron spike/xxx.js` 会被当成普通 Node 跑，报错是
+> `Cannot read properties of undefined (reading 'whenReady')`——`require('electron')`
+> 拿到的只是二进制的路径字符串，不是 `app`。这时清掉那两个变量、并绕开 `npx` 直接点二进制：
+>
+> ```bash
+> env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+>   ./node_modules/electron/dist/electron.exe spike/media-pause.js
+> ```
+>
+> 同一类环境里 GPU 进程往往起不来（`GPU process exited unexpectedly: exit_code=-1073741819`
+> 紧接着 `GPU process isn't usable. Goodbye.`），加 `--disable-gpu --no-sandbox` 即可——
+> 探针量的都是 DOM 层的事实，软渲染不影响结论。另外 `app.exit()` 之后主进程有时会挂在
+> 管道上不退，收尾看一眼 `tasklist | grep electron`，必要时 `taskkill /F /IM electron.exe`。
+> 这三条都只是本机的跑法，与仓库里的代码无关。
+
 ```bash
 npx electron spike/index.js
 ```
@@ -127,9 +143,19 @@ tick / 窗口显示没显示），连续走三趟全屏进出，看哪一趟起�
 npx electron spike/media-pause.js
 ```
 
-探「窗口没露出来时，网页里正在播的音视频会不会停」，起的是**真的** `WindowController`
-与**真的** `TabManager`，`onVisibilityChange` 那一条接线与 `src/main/index.ts` 一字不差
-（这一问验的就是这条线：收起 / 进托盘 / 最小化 → 暂停，回到展开态 → 恢复）。
+探「谁该出声」这两条规矩，起的是**真的** `WindowController` 与**真的** `TabManager`，
+`onVisibilityChange` 与 `config.subscribe` 两条接线都与 `src/main/index.ts` 一字不差。
+两组问题打的是两条入口，它们最终汇进同一个 `applyMediaState()`
+（见 [架构要点](architecture.md) 第 21 条）：
+
+- **收起**（Q1–Q10）：收起成球 / 藏进托盘 / 最小化 → 暂停并静音，回到展开态 → 恢复；
+  关掉 `muteMediaOnCollapse` 之后收起时**什么都不该动**。
+- **切走**（Q11–Q16，另加一条前提）：切到别的标签、进起始页 / 系统设置 → 刚切走那张停、
+  切过去那张接着放；切回来接着放，而**用户自己按过暂停的那一个仍然是暂停的**；关掉
+  `pauseMediaOnSwitch` 之后切走的那张继续在后台放。
+
+**Q3 的预期在这一版反过来了**：原先问的是「展开后两页都接着放」，现在是「正在看的那张
+恢复、**后台那张仍然停着**」——「一起恢复」正是两条规矩各算一遍时会漏出来的洞。
 
 页面里是**真在播的媒体**，不是摆样子：探针在 Node 里现生成一段 8kHz PCM 的 WAV
 （Chromium 原生就认，不依赖任何编解码器），`loop` 起来，所以 `paused === false` 是真的；
@@ -137,9 +163,10 @@ npx electron spike/media-pause.js
 而不是给一个好看的通过。场上三个元素各有用处——正在播的主媒体、**由用户自己按停**
 的那一个（展开时不该被我们放起来），以及一个 `data:` iframe 里的播放器（跨源，
 顶层脚本够不到，只有主进程按帧走才够得着，真实网站的嵌入播放器就是这个样子）。
-另有一张**后台标签页**同样在播：收起时只停当前那一页的话，声音还在响。
-最后两问盯住另外两半——静音（Web Audio 之类暂停不到的靠它兜底）、以及
-把这个开关关掉之后收起时**什么都不该动**。
+另有一张**后台标签页**同样在播：收起时只停当前那一页的话，声音还在响；它同时是
+「切走」那一组的另一边（它建好之后探针补一句 `activate(frontId)`，把场上摆成应用里
+真实的样子——当前那张露着、另一张藏着，否则「后台」只是个名义）。
+最后再盯住静音那一半——Web Audio 之类暂停不到的靠它兜底。
 
 ```bash
 npx electron spike/popover-focus.js
@@ -282,6 +309,13 @@ npx electron spike/update-check.js
   原因；再按一下「更新并重启」要能真的重装、真的退，且那句原因被清掉
 - **真实的那一份 `release/latest.yml`** 解析得出来：url、sha512、size 与盘上那个
   exe 逐项对得上（喂给它的是真构建产物，不是手写的样例）
+- **安装器那一侧不会被一个被占住的文件掐死**（Q73，`build/installer.nsh`）：这一层
+  `update-check.js` 验不到（它量到 spawn 为止），只能真机跑——见下面那一节。改这个
+  文件之后，先跑那两条**编译探针**再打包：`spike/nsis-abort-probe/hook-compile.nsi`
+  与 `hook-compile-un.nsi`（后者带 `-DBUILD_UNINSTALLER`），都要加 `-WX` ——
+  electron-builder 编译 NSIS 时是「警告即错误」，而同一个钩子文件会被**装两遍**
+  （安装器一次、卸载器一次），只在 `customUnInstallCheck` 里用到的 `Var` 在卸载器
+  那一趟是「声明了没用」，warning 6001 会让构建失败
 
 ```bash
 npx electron spike/update-check.js --net
@@ -291,6 +325,113 @@ npx electron spike/update-check.js --net
 **URL 拼得对不对**，只有真地址验得了。这台机器上 GitHub 时通时不通
 （本地代理没写进 Windows 的系统代理设置，见 Q36），因此这一问网络不通时记
 **SKIP 而不是 FAIL**——那条路上红了未必是代码的问题。
+
+### 升级不再被「旧卸载器清不掉目录」掐死（真机）
+
+`Failed to uninstall old application files. Please try running the installer
+again.: 2` 的由来见 docs/spike-findings.md 的 Q73：旧卸载器靠**逐个 `Rename`**
+清 `$INSTDIR`，一个文件改不动就 `Abort`（退出码 2），新版安装器见到非 0 便弹框
+退出。真机上这个「改不动」来自百度网盘同步空间 / Defender / 缩略图这类短时占用，
+出现得很随机，所以先把它变成必然——按住 `app.asar` 的独占句柄（`dwShareMode=0`，
+期间谁都改不动它）。
+
+所以这件事整条都收进了 `spike/nsis-abort-probe/e2e-upgrade.sh`，一条命令跑完。收进去
+不只是图省事——**手工敲的每一步都可能悄悄失效，而失效与成功看起来一模一样**（见下面
+「三条踩过的假象」）：
+
+```bash
+# 前置：本机得先装着 1.6.2 —— 脚本自己会核对，不是就直接停
+bash spike/nsis-abort-probe/e2e-upgrade.sh \
+  "E:\AIWork\1003开源摸鱼阅读软件\release\zhituan-1.6.4-x64.exe"
+```
+
+它按顺序做四件事，每一件都有能对错的读数：
+
+1. **升级前**：注册表 `DisplayVersion`，加上主程序与 `app.asar` 的**字节数与 mtime**。
+   mtime 是关键判据——NSIS 的 `File` 保留源文件的 mtime，于是「文件真的换过了」和
+   「退出码 0 但文件还是旧的」（混合安装）一眼分得开：1.6.2 的载荷 mtime 是 11:18，
+   1.6.4 是 14:5x / 15:0x。
+2. **上锁并复查**，两条证明缺一不可：① 再开一次必须被拒（错误 32 =
+   `ERROR_SHARING_VIOLATION`）；② `lockprobe.py` 复刻旧卸载器的改名搬移，必须改不动
+   `resources`。**只做 ② 不够**，理由见第 ③ 条假象。
+3. **`/S --updated`** 静默跑。`--updated` 不能省——只有带上它，新版安装器才会把
+   `--updated` 转给旧卸载器，旧卸载器才会走那段「改名 → `Abort`」。不带的话走的是
+   普通卸载路径，本来就不会退 2，测了个寂寞。
+4. **放锁的时机交给哨兵**（`lockhold-until.py`）：盯住安装日志，出现
+   `旧卸载器退出码` 才松手——那一刻恰好是「旧卸载器已经失败、安装器正要开始清场」。
+   按固定秒数押是押不准的，两种押错各有各的假象（见第 ① 条）。
+
+读数应当是这样：
+
+- **退出码 0**，墙钟几十秒。
+- 日志逐行走完：`安装前没有检测到纸团在运行` → `旧卸载器退出码 2` →
+  `旧卸载器没能清干净 …，改为强制清场后继续覆盖安装` → `[unc1] … 尚未删净，第 N 次重试`
+  → `… 已清空，继续覆盖安装`。**`2` 那个数是关键**：没有它说明锁没赶上，这一跑
+  什么都没验到（而这正是第一次踩的坑）。
+- `DisplayVersion` 变成 `1.6.4`，`$INSTDIR` 下的 mtime 变成新构建那一刻。
+
+而**修之前**的那一幕是另一枚包上的：1.6.2 的安装包退出码 **2**，屏幕上留一个等人点的
+框（静默模式下 `MessageBox` 照样出现——`uninstallFailed` 那句故意不带 `/SD`），正是
+用户截图里那一幕；用 `timeout` 跑，表现是**到点仍在运行（124）**而不是返回 2。**先验病、
+再验修**，两枚包各跑一遍才算把这条链走通。
+
+**三条踩过的假象**（都不是产品问题，但都长得像）：
+
+① **锁的时长两头都错。** 押短了：第一次用 20 秒的锁就没赶上「安装程序启动 → 调用旧
+   卸载器」那十几秒，日志里写的是 `旧卸载器退出码 0`——那不是「修好了」，是根本没量到
+   那个失败。押长了：锁会一直挡着，于是走到设计里的第三条路（清不掉 → 弹框说清原因），
+   而静默模式下那个框等人点，脚本就挂着不动。两头都错，所以改成哨兵放锁。
+② **`export MSYS_NO_PATHCONV=1` 不能被 `&` 关进后台子 shell。** 否则前台那条 `/S` 被
+   MSYS 当路径转换掉，安装程序落进**交互向导**等人点：表现为「卡住一百八十秒、日志
+   一个字都没有」（`Section install` 压根没轮到执行），很容易被误读成「新版本也卡住了」。
+   脚本里它是**单条命令的前缀**，不靠导出，就没有这个窗口。
+③ **`lockprobe` 报 `BUSY` 不等于「被占用」。** 它原先用一个固定名字的暂存目录，上一轮
+   留下的同名项会让 `os.rename` 以 winerror **183**（文件已存在）失败，而真占用报的是
+   winerror **5**（拒绝访问）——两行都写着 `BUSY`，混在一起看就全咽下去了。现在每轮
+   `mkdtemp`，并且「锁真在」另有第二条独立证明（错误 32）兜着。
+
+上面那一遍是**端到端**的，它验的是「旧卸载器失败之后，升级照样走完」。而这一版
+还改了两条判据，端到端看不见它们——各自有更小的探针，**编译时带 `-WX`**（警告即
+错误，和真实构建同一把尺子）：
+
+```bash
+cd spike/nsis-abort-probe
+MK="/c/Users/poem/AppData/Local/electron-builder/Cache/nsis/nsis-3.0.4.1/Bin/makensis.exe"
+"$MK" -WX -INPUTCHARSET UTF8 hook-branch.nsi && ./hook-branch.exe; echo "退出码 $?"
+```
+
+`hook-branch` 把 `customUnInstallCheck` 的四种组合各跑一遍，退出码 0 = 四条断言全过，
+读数在 `$TEMP\zt-probe-branch.txt`。四条里两条是「必须不动」、两条是「必须清场」：
+
+- **退出码 0 + 目录里有残留 → 必须不动。** 这一半守的是全新安装：`uninstallOldVersion`
+  找不到旧版时 `$R0` 就是 0（`installUtil.nsh:152-153`），而 `handleUninstallResult`
+  **每次安装之后都会跑**（`installSection.nsh:53`）——用户完全可能在全新安装时选一个
+  装着别的东西的目录，那里面一个字节都不能动。
+- **退出码 0 + 目录里是别人的文件 → 必须不动。**
+- **退出码 2 + 只剩 `resources\app.asar` → 必须清场。** 这一种正是改判据要覆盖的：
+  `RMDir /r` 是尽力而为的，主程序照样会被删掉，留下来的恰恰是 `app.asar`，而原来那条
+  「有没有 `zhituan.exe`」的判据看不见它。
+- **退出码 2 + 主程序还在 → 必须清场。** 回归，行为不该变。
+
+```bash
+FIX="$TEMP/zt-remove"
+rm -rf "$FIX"; mkdir -p "$FIX/resources"; echo stale > "$FIX/resources/app.asar"
+./hook-remove.exe; echo "解锁退出码 $?"           # 期望 0
+( python lockhold.py 'C:\Users\poem\AppData\Local\Temp\zt-remove\resources\app.asar' 40 & )
+sleep 2; ./hook-remove.exe; echo "上锁退出码 $?"   # 期望 2
+```
+
+`hook-remove` 盯的是整条链子的**关节**。`customRemoveFiles` 换掉的那一段，原版靠
+`Abort` 给出退出码 2，安装器据此才知道「旧卸载器没清干净」，再交给
+`customUnInstallCheck` 清场。换成安静地 `RMDir /r` 之后，退出码默认就是 0，而 0 的
+语义是「目录清干净了」——安装器于是把新文件铺在旧文件旁边，留下 `app.asar` 还是旧的
+**混合安装**，比直接失败更难查。所以「删不净时如实报 2」这句必须有探针盯着，而且
+**正反两面都要有**：不上锁时退出码 0（顺带证明这一句没有把正常升级也拖进重试），
+上锁时退出码 2。只验一面说明不了问题。
+
+另外值得单独跑一遍的是「应用正在运行时升级」（不起那个锁就行）：`customCheckAppRunning`
+应当把进程收干净，装完 `--force-run` 叫回来的是新版——不然用户会停在旧进程上，
+看着像没更新。
 
 ```bash
 npx electron spike/tray-reveal.js

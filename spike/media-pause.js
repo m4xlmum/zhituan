@@ -7,12 +7,18 @@
  *
  * 因此这里起的是**真的** WindowController 与**真的** TabManager（配置写在临时目录、
  * 会话用内存分区，绝不碰用户的那一份），接线与 src/main/index.ts 一字不差地对齐，
- * 连 onVisibilityChange 那条都照抄——这一问验的就是这条线：
+ * 连 onVisibilityChange 与 config.subscribe 那两条都照抄——这一问验的就是这两条线：
  *
- *     collapse() / hideToTray() / minimize()
- *       → transitionTo('…') → onVisibilityChange(false)
- *       → tabs.setBodyVisible(false, cfg.stealth.muteMediaOnCollapse)
- *       → 逐帧 PAUSE_PLAYING_MEDIA / RESUME_PAUSED_MEDIA
+ *     ① 收起：collapse() / hideToTray() / minimize()
+ *          → transitionTo('…') → onVisibilityChange(false)
+ *          → tabs.setBodyVisible(false) → applyMediaState()
+ *          → 逐帧 PAUSE_PLAYING_MEDIA / RESUME_PAUSED_MEDIA
+ *     ② 切走：activate()（切标签、进起始页 / 设置都从它过）
+ *          → applyMediaState() → 同上
+ *
+ * 两条线在 applyMediaState 一处合成同一条判据（「谁该出声」），所以两类都要问：
+ * 收起那一组是原先就有的行为，**切走那一组**是这一版新加的——它反过来还改了收起
+ * 那一组的预期：展开时不再「两页一起恢复」，后台那张仍然停着（Q3）。
  *
  * ## 页面是真的在播，不是摆样子
  *
@@ -31,7 +37,7 @@
  *          读出来不算数），而是它对父页面的 message 回复，探针只读父页面收到的那份。
  *
  * 还有一张**后台标签页**同样在播：收起时它也该停——只停当前那一页的话，
- * 声音还在响，毛病照旧。
+ * 声音还在响，毛病照旧。它同时是「切走时暂停」那一组问题里的另一边。
  *
  * 窗口摆在所有显示器之外，并且从不显示（show / showInactive 都换成空操作）：
  * 用户说过改代码时不要弹窗。媒体播不播与窗口显不显示无关，这正是本题的前提。
@@ -266,7 +272,7 @@ app.whenReady().then(async () => {
     rendererUrl: pathToFileURL(path.join(ROOT, 'out', 'renderer', 'index.html')).toString(),
     // 这一条就是被测的接线：与 src/main/index.ts 里那份一字不差
     onVisibilityChange: (visible) => {
-      tabsRef?.setBodyVisible(visible, config.get().stealth.muteMediaOnCollapse)
+      tabsRef?.setBodyVisible(visible)
     },
     onLayoutChange: () => tabsRef?.layoutAll(),
     onStateChange: () => {},
@@ -284,6 +290,11 @@ app.whenReady().then(async () => {
     onPageFullscreen: (active) => controller.setPageFullscreen(active)
   })
   tabsRef = tabs
+
+  // 另一条接线也照抄：改配置就当场重算媒体状态（见 index.ts 的 config.subscribe）
+  config.subscribe(() => {
+    tabs.refreshMediaState()
+  })
 
   controller.create()
   const win = controller.getWindow()
@@ -307,10 +318,17 @@ app.whenReady().then(async () => {
   }
 
   const wav = wavDataUrl()
-  tabs.create({ url: writePage('front', wav), activate: true })
+  const frontId = tabs.create({ url: writePage('front', wav), activate: true })
   await delay(700)
   // 后台那一张：正在播的媒体不该因为「不是当前标签页」就被漏掉
-  tabs.create({ url: writePage('back', wav), activate: false })
+  const backId = tabs.create({ url: writePage('back', wav), activate: false })
+  /*
+   * create 末尾那句 `view.setVisible(this.bodyVisible)` 会把**新建**的视图画出来，
+   * 不管它是不是当前那一张（应用里 activate:false 只出现在会话恢复那条路上，随后
+   * 那一次 activate 会把次序理顺）。这里紧跟一句 activate(frontId)，把场上摆成
+   * 应用里真实的样子——当前那张露着、另一张藏着，否则「后台标签页」只是个名义。
+   */
+  tabs.activate(frontId)
   await delay(1000)
 
   // 按 URL 认页，不按子视图次序：次序会随「谁在最上层」变（syncChromeOrder 会重排）
@@ -367,10 +385,21 @@ app.whenReady().then(async () => {
   const resumed = await waitPlaying(page)
   const shown = await media(page)
   const backShown = await media(back)
-  record('Q3', '展开后，我们自己按下去的暂停被恢复（两页都接着放）', resumed && playing(backShown) ? '是' : '否', {
-    前台: { 主媒体: shown.v, iframe里的: shown.frame },
-    后台: { 主媒体: backShown.v, iframe里的: backShown.frame }
-  })
+  /*
+   * 这一问的预期在「切走时暂停」进来之后**反过来了**：展开不再把两页一起放起来。
+   * 正在看的那张恢复，后台那张仍然停着——它归另一条规矩管（见下面 Q11 起那几条）。
+   * 原先这里问的是「两页都接着放」，而那种写法正是两条规矩合成一条判据要修掉的洞：
+   * 窗口一展开就顺手把后台那张也放响了。
+   */
+  record(
+    'Q3',
+    '展开后：正在看的那一张恢复，后台那一张仍然停着（不是「两页一起放起来」）',
+    resumed && stopped(backShown) ? '是' : '否',
+    {
+      前台: { 主媒体: shown.v, iframe里的: shown.frame },
+      后台: { 主媒体: backShown.v, iframe里的: backShown.frame }
+    }
+  )
   // 这一条比 Q3 更要紧：恢复错了（把用户自己暂停的也放起来）比不恢复还烦
   record(
     'Q4',
@@ -391,7 +420,7 @@ app.whenReady().then(async () => {
   step('单击托盘图标把它叫回来')
   controller.toggleFromTray()
   const backFromTray = await waitPlaying(page)
-  record('Q6', '从托盘现形后又接着放', backFromTray ? '是' : '否', await media(page))
+  record('Q6', '从托盘现形后，正在看的那一张又接着放', backFromTray ? '是' : '否', await media(page))
 
   // ------------------------------------------------------------ Q7 最小化
   step('最小化')
@@ -444,6 +473,103 @@ app.whenReady().then(async () => {
     '关掉这个开关之后，收起时不再动网页里的媒体（用户自己的选择要被尊重）',
     reading(offState) && offState.v.paused === false && offMuted === false ? '是' : '否',
     { 收起后的主媒体: reading(offState)?.v, 收起后是不是静音: offMuted }
+  )
+
+  // ------------------------------------------------- Q11–Q16 切走时暂停
+  /*
+   * 第二条规矩：窗口露着的时候，只有正在看的那一张出声。
+   *
+   * Q10 把「收起时暂停」那条开关关掉了，这里先恢复回来——两条规矩各自独立，但这一组
+   * 要在默认配置下问，否则量到的是两条规矩叠在一起的结果。恢复那一下会触发
+   * refreshMediaState（照抄了 index.ts 的 config.subscribe），后台那张会被按下去，
+   * 因此紧接着把两页重新起播。
+   */
+  step('切走时暂停：恢复开关，然后切过去')
+  config.set((c) => ({ ...c, stealth: { ...c.stealth, muteMediaOnCollapse: true } }))
+  /*
+   * 这里**不**再调一次 `zhituanStart()`。
+   *
+   * 到此为止两页的状态正好就是这一组要的：这一页在播（上一问刚验过）、另一页停着
+   * 而且带着我们打下的记号（收起那一段留下的）。再播一遍反而会踩到探针自己的时序
+   * ——`zhituanStart` 会把「用户自己按停」的那个也播起来、250ms 之后再由页面自己
+   * 按停，而**隐藏页面里的定时器会被 Chromium 节流到约一秒一次**。赶在那个 pause
+   * 之前切走，我们就会把它当成「正在播的」一起按下去、并给它打上记号，于是 Q13
+   * 问的已经不是「用户自己暂停的那一个」了。那不是产品行为，是探针自己造的时序。
+   */
+  const pagePlaying = await waitPlaying(page)
+  record(
+    'Q11-前提',
+    '前提：切走之前这一页确实在播（否则「切走后它停了」是白送的）',
+    pagePlaying ? '是' : '否',
+    await media(page)
+  )
+
+  tabs.activate(backId)
+  const switchedToBack = await waitPlaying(back)
+  const frontAfterSwitch = await waitStopped(page)
+  record(
+    'Q11',
+    '切到另一张之后：切过去的那张接着放，切走的那张停了（iframe 里的也算）',
+    switchedToBack && frontAfterSwitch ? '是' : '否',
+    { 切过去那张: await media(back), 切走那张: await media(page) }
+  )
+
+  tabs.activate(frontId)
+  const backToFront = await waitPlaying(page)
+  const backAfterReturn = await waitStopped(back)
+  record(
+    'Q12',
+    '再切回来：那一张恢复播放，刚切走的那张停',
+    backToFront && backAfterReturn ? '是' : '否',
+    { 切过去那张: await media(page), 切走那张: await media(back) }
+  )
+  // 与 Q4 同一条道理，换到这一条规矩上再问一遍：恢复的只是我们按下去的那些
+  /*
+   * 前提：「用户自己按停的那一个」得真的处在暂停态，这一问才问得成。只等这一页
+   * ——读的就是它（另一页的同一个元素与这一问无关）。页面里那个「250ms 后自己按停」
+   * 的定时器在隐藏页会被节流，慢一拍是常事，等一下就稳了。
+   */
+  const uSeated = await waitUntil(async () => {
+    const m = await media(page)
+    return !!reading(m) && m.u.paused === true && m.u.marked === false
+  }, 6000)
+  const afterReturn = await media(page)
+  record(
+    'Q13',
+    '切回来之后，用户自己按过暂停的那一个仍然是暂停的（恢复只认我们自己的记号）',
+    uSeated && afterReturn.u && afterReturn.u.paused === true && afterReturn.u.marked === false
+      ? '是'
+      : '否',
+    { 前提_那一个先得真的处于暂停态: uSeated, 切回来之后: afterReturn.u }
+  )
+
+  // ---------------------------------- Q14/Q15 起始页与设置同样占着正文区
+  step('进起始页')
+  tabs.openHome()
+  const stoppedOnHome = await waitStopped(page)
+  record(
+    'Q14',
+    '进起始页时刚才那张网页也停（起始页 / 设置不是标签页，但同样占着正文区）',
+    stoppedOnHome ? '是' : '否',
+    await media(page)
+  )
+  step('从起始页原路返回')
+  tabs.leaveScreen()
+  const resumedFromHome = await waitPlaying(page)
+  record('Q15', '从起始页原路返回后又接着放', resumedFromHome ? '是' : '否', await media(page))
+
+  // ------------------------------------------------- Q16 关掉第二条开关
+  step('把 stealth.pauseMediaOnSwitch 关掉，再切走一次')
+  config.set((c) => ({ ...c, stealth: { ...c.stealth, pauseMediaOnSwitch: false } }))
+  await waitPlaying(page)
+  tabs.activate(backId)
+  await delay(700)
+  const leaked = await media(page)
+  record(
+    'Q16',
+    '关掉「切走时暂停」之后，切走的那张继续在后台放（用户自己的选择要被尊重）',
+    reading(leaked) && leaked.v.paused === false ? '是' : '否',
+    reading(leaked)?.v
   )
 
   finish(results.some((r) => r.verdict !== '是') ? 1 : 0)

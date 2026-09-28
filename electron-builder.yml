@@ -60,3 +60,11 @@ nsis:
   language: '2052'
   # 卸载时保留用户数据（书签、站点、登录态），重装后不至于全丢
   deleteAppDataOnUninstall: false
+  # 安装器/卸载器的扩展钩子。修「升级时报 Failed to uninstall old application
+  # files ... : 2」：旧卸载器改名搬移失败就 Abort（退出码 2），新版安装器随即
+  # 弹框退出。这里在旧卸载器动手前先收干净进程，失败也不再中断升级。
+  # 这个值就是默认值（buildResources 下的 installer.nsh），写出来是为了别被
+  # 以后改 directories.buildResources 时悄悄弄丢。路径相对 buildResources 解析，
+  # 所以只能写文件名，不能写 build/installer.nsh。
+  include: installer.nsh
+

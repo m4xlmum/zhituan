@@ -610,7 +610,25 @@ function setSizePreset(preset: SizePreset): void {
                 "
               />
               <span class="dim">
-                收起成球、藏进托盘、最小化都算；回到展开态接着放。右栏最上面那一格是同一个开关
+                收起成球、藏进托盘、最小化都算；回到展开态接着放。右栏最上面那两格紧挨着，就是这两个开关
+              </span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label>切走时暂停音视频</label>
+            <div class="control">
+              <input
+                type="checkbox"
+                :checked="config.stealth.pauseMediaOnSwitch"
+                @change="
+                  patch({
+                    stealth: { pauseMediaOnSwitch: ($event.target as HTMLInputElement).checked }
+                  })
+                "
+              />
+              <span class="dim">
+                切到别的标签、进起始页或系统设置都算；切回来接着放。它只暂停那一页、不闭麦——别处开着的声音不受影响
               </span>
             </div>
           </div>

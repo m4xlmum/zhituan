@@ -79,9 +79,15 @@ const needsPreload = (kind: TabKind): boolean => kind !== 'guest'
 /**
  * 暂停网页里正在播放的音视频。**暂停，不是静音。**
  *
- * 收起成球或藏进托盘时窗口虽然不在屏幕上，网页那一侧仍是一个活着的渲染进程：
- * 视频会照常往下播，用户回来时进度已经跑掉了。`setAudioMuted` 只解决听得到
- * 的那一半（它仍然要留着——Web Audio 与我们暂停不到的播放器都靠它闭麦）。
+ * 两种场合都要它，理由不同：
+ *
+ * - **窗口没露出来**（收起成球 / 藏进托盘 / 最小化）：窗口虽然不在屏幕上，网页
+ *   那一侧仍是一个活着的渲染进程——视频会照常往下播，用户回来时进度已经跑掉了。
+ *   那一场合还要闭麦：`setAudioMuted` 解决的是听得到的那一半（Web Audio 与我们
+ *   暂停不到的播放器都靠它）。
+ * - **切走那一页**（切到别的标签、或进起始页 / 设置）：页面照样活着，同样会往下播。
+ *   这一场合只暂停、不闭麦——用户在别处可能正听着东西，见 @shared/types 的
+ *   pauseMediaOnSwitch。
  *
  * 记号打成一个展开属性（`__zhituanPaused`）而不是 `data-` 属性：后者会出现在 DOM 里，
  * 页面自己能看见。也正因为记号在元素上，页面换了播放器元素、或者整页导航走了，
@@ -158,6 +164,19 @@ export interface TabManagerDeps {
     ui: {
       /** 离线阅读正文的透明度：开着的本机文件要按它往自己的视图里注入 */
       readerOpacity: number
+    }
+    /**
+     * 媒体那两条规矩读的就是这里（见 applyMediaState）。
+     *
+     * 只声明用得着的这两个字段，而不是把整份 stealth 摊开——与上面 browser / ui
+     * 同一个写法：这一层要什么写什么，于是「它依赖了哪几项配置」一眼看得见，
+     * 配置里多出一个字段也不会牵动这里。
+     */
+    stealth: {
+      /** 窗口收起来（成球 / 托盘 / 最小化）时暂停全部媒体，并且静音 */
+      muteMediaOnCollapse: boolean
+      /** 切走那一页时暂停它：切到别的标签、或进起始页 / 系统设置 */
+      pauseMediaOnSwitch: boolean
     }
   }
   onStateChange: () => void
@@ -555,6 +574,15 @@ export class TabManager {
         log.warn('切换标签页可见性失败', err)
       }
     }
+    /*
+     * 谁在上面变了，「谁该出声」也就跟着变了：切走的那一张暂停、切进来的那张接着放。
+     *
+     * 收在这一处就够，因为 activate 是切标签的**唯一入口**——界面点击、新建标签、
+     * 关掉一张后落到下一张、起始页 / 设置的「原路返回」、启动时会话恢复，五条路
+     * 都从这儿过。它也顺带管住了「进起始页 / 设置」这件事：那两屏在内部同样占着
+     * activeId（谁在上面只有一份账），于是切过去时刚才那张网页照样停下。
+     */
+    this.applyMediaState()
     this.layoutTab(entry)
     this.deps.onStateChange()
   }
@@ -571,12 +599,18 @@ export class TabManager {
   // ------------------------------------------------------------ 主体显隐
 
   /**
-   * 主体隐藏时把所有标签页视图设为不绘制、暂停正在播放的媒体并静音。
+   * 主体隐藏时把所有标签页视图设为不绘制，并按「谁该出声」重算一遍媒体状态。
    *
    * 仅仅是「不绘制」远远不够：网页那一侧照常活着，视频会继续往下播，
-   * 用户回来时进度已经跑掉了（音视频一起，见那两个脚本）。
+   * 用户回来时进度已经跑掉了。判据在 applyMediaState 一处，这里只负责翻
+   * `bodyVisible` 这个前提——它一翻，那条判据的结果就全变了（隐藏时全部停，
+   * 露出来时只有正在看的那一张继续）。
+   *
+   * 从前那个 `muteMedia: boolean` 参数（调用方把 `stealth.muteMediaOnCollapse`
+   * 传进来）撤掉了：窗口这一侧只知道「露没露出来」，凭什么替标签页决定后台
+   * 那张该不该出声。两条规矩的开关都改在 applyMediaState 里现读。
    */
-  setBodyVisible(visible: boolean, muteMedia: boolean): void {
+  setBodyVisible(visible: boolean): void {
     this.bodyVisible = visible
     for (const [id, t] of this.tabs) {
       try {
@@ -584,14 +618,59 @@ export class TabManager {
       } catch (err) {
         log.warn('同步主体显隐失败', err)
       }
-      if (!muteMedia) continue
-      try {
-        t.view.webContents.setAudioMuted(!visible)
-      } catch {
-        // 页面可能已销毁
-      }
-      this.setMediaPaused(t.view.webContents, !visible)
     }
+    this.applyMediaState()
+  }
+
+  /**
+   * 「谁该出声」只有这一处算得出来。
+   *
+   * 两条独立的规矩合成一句话，取或——任一条要求它停，它就停：
+   *
+   * - **窗口没露出来**（收起成球 / 藏进托盘 / 最小化），且 `muteMediaOnCollapse`
+   *   开着：全部停，并且闭麦。
+   * - **窗口露着**，且 `pauseMediaOnSwitch` 开着：只有正在看的那一张出声，
+   *   切走的那张停——不闭麦。
+   *
+   * 从前只有前一条，而且写成「隐藏就全停、露出来就全恢复」。多出第二条之后那种
+   * 写法就漏了：窗口一展开会把后台那张也一起放起来，两个声音同时出来。所以判据
+   * 必须收在一处，两个入口（activate 与 setBodyVisible）都调它，不各自算一遍。
+   *
+   * 重复把同一个值设下去是幂等的，因此这里不另存一份影子状态去判「变没变」——
+   * 那才是两处不同步的来源。
+   */
+  private applyMediaState(): void {
+    const stealth = this.deps.getConfig().stealth
+    const hidden = !this.bodyVisible
+    for (const [id, t] of this.tabs) {
+      const wc = t.view.webContents
+      if (wc.isDestroyed()) continue
+      // 闭麦只跟「窗口收起来了」走；切走那一张只暂停，见 pauseMediaOnSwitch
+      if (stealth.muteMediaOnCollapse) {
+        try {
+          wc.setAudioMuted(hidden)
+        } catch {
+          // 页面可能已销毁
+        }
+      }
+      const stop =
+        (stealth.muteMediaOnCollapse && hidden) ||
+        (stealth.pauseMediaOnSwitch && id !== this.activeId)
+      this.setMediaPaused(wc, stop)
+    }
+  }
+
+  /**
+   * 设置里刚改了那两条规矩：当场重算一遍，不必等下一次切标签。
+   *
+   * 与 refreshReaderOpacity 同一条道理——用户盯着开关按下去，指望的就是它立刻
+   * 生效：关掉「切走时暂停」之后，刚才被我们暂停的那些应当马上放起来；打开它，
+   * 此刻在后台的那些应当马上停下。等下一次切换才生效等于这条开关是坏的。
+   *
+   * 调用点挂在 index.ts 的配置订阅上（写配置的路不止一条，挂 store 才不漏）。
+   */
+  refreshMediaState(): void {
+    this.applyMediaState()
   }
 
   /**

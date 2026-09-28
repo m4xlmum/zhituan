@@ -113,7 +113,7 @@ const readerHint = computed(() =>
  *
  * 这一项在系统设置里也有（隐蔽 → 收起时暂停音视频），两处改的是同一份配置，
  * 靠配置广播对齐——因此在设置里改完，这里那一格的高亮会跟着变。
- * 摆在本栏最上面一格：小窗口下这条功能栈是**会滚的**（迷你档
+ * 摆在本栏最上面那一行：小窗口下这条功能栈是**会滚的**（迷你档
  * 480×270 实测溢出 264px，默认档 960×540 刚好放满、溢出 0px），
  * 排在下面的东西等于藏起来了，而这一枚本来就是嫌设置里不好找才搬上来的。
  */
@@ -128,6 +128,27 @@ const pauseHint = computed(() =>
 function togglePauseOnCollapse(): void {
   emit('patch', { stealth: { muteMediaOnCollapse: !pauseOnCollapse.value } })
 }
+
+/**
+ * 切走时是否暂停那一页的媒体。
+ *
+ * 与上一格是两条独立的规矩（见 @shared/types 的 pauseMediaOnSwitch）：收起是
+ * 「不能出声」，切走只是「不该在这儿播」——因此切走那一张只暂停、**不闭麦**。
+ * 它不与上一格分开放：它们说的是同一件事（什么时候让网页停下来）的两个场合，
+ * 一头一尾摆开等于让人去两处找，而这一栏本来就是嫌设置里不好找才长出来的。
+ * 两格并排占一行，不为它多占一行——理由见模板里那段注释。
+ */
+const pauseOnSwitch = computed(() => props.config?.stealth.pauseMediaOnSwitch ?? false)
+
+const switchHint = computed(() =>
+  pauseOnSwitch.value
+    ? '切走时暂停播放 · 开：切到别的标签、进起始页 / 设置都会暂停那一页，切回来接着放'
+    : '切走时暂停播放 · 关：切走之后网页继续在后台播放'
+)
+
+function togglePauseOnSwitch(): void {
+  emit('patch', { stealth: { pauseMediaOnSwitch: !pauseOnSwitch.value } })
+}
 </script>
 
 <template>
@@ -140,17 +161,33 @@ function togglePauseOnCollapse(): void {
   >
     <div class="stack">
       <!--
-        收起时暂停播放。全栏唯一一格「开关」：其余要么打开面板、要么是滑块，
-        它按下去就地切换一个状态，高亮即当前状态（.item.on）。
+        最上面这两格是「开关」——全栏只有这两格按下去就地切一个状态，其余要么
+        打开面板、要么是滑块，高亮即当前状态（.item.on）。
+
+        两格并排挤在**一行**里，而不是各自占一行：这一栏的高度是量着配的
+        （默认档 960×540 刚好放满、溢出 0px，见 .stack 那条注释），再多一行
+        就会把最底下那条滑块推到折叠线以下——而这条栏的立栏理由正是「横屏下
+        纵向空间最贵」。并排还顺带说明了它们的关系：同一件事（什么时候让网页
+        停下来）的两个场合。
       -->
-      <button
-        class="item"
-        :class="{ on: pauseOnCollapse }"
-        :title="pauseHint"
-        @click="togglePauseOnCollapse"
-      >
-        <Icon name="pause" :size="14" />
-      </button>
+      <div class="pair">
+        <button
+          class="item"
+          :class="{ on: pauseOnCollapse }"
+          :title="pauseHint"
+          @click="togglePauseOnCollapse"
+        >
+          <Icon name="pause" :size="14" />
+        </button>
+        <button
+          class="item"
+          :class="{ on: pauseOnSwitch }"
+          :title="switchHint"
+          @click="togglePauseOnSwitch"
+        >
+          <Icon name="stop" :size="14" />
+        </button>
+      </div>
 
       <div class="sep" />
 
@@ -271,6 +308,27 @@ function togglePauseOnCollapse(): void {
   height: 1px;
   margin: 3px 4px;
   background: var(--zhituan-hairline);
+}
+
+/*
+ * 两格开关并排一行。
+ *
+ * 这一栏的高度是量着配的（见 .stack 注释）：默认档 960×540 刚好放满，再加一行
+ * 26+2px 就会把最底下那条滑块推到折叠线以下。两格因此共占原来那一格的位置
+ * ——48px 的栏减去两侧 4px 内边距与 2px 间隙，每格 19px 宽，14px 的图标摆得下。
+ * 不为这两格把栏加宽：栏宽一改，正文区、四档尺寸预设、各处的版面账都要跟着动。
+ */
+.pair {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 2px;
+}
+
+.pair > .item {
+  /* .item 是 width:100%（给独占一行的那几格用的），这里改由 flex 平分 */
+  width: auto;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .item {

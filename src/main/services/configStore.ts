@@ -80,6 +80,9 @@ export function defaultConfig(): AppConfig {
       autoCollapse: false,
       hideDelayMs: HIDE_DELAY_MS,
       muteMediaOnCollapse: true,
+      // 默认开：切走那一页就该停，切回来接着放——不会有两张标签同时出声，
+      // 也不会切回来发现进度已经跑掉了。想「放着音乐翻别的页」的自己关掉。
+      pauseMediaOnSwitch: true,
       contentProtection: false
     },
     hotkeys: {
@@ -149,6 +152,7 @@ function normalize(input: Partial<AppConfig> | null | undefined): AppConfig {
     autoCollapse: input.stealth?.autoCollapse ?? d.stealth.autoCollapse,
     hideDelayMs: input.stealth?.hideDelayMs ?? d.stealth.hideDelayMs,
     muteMediaOnCollapse: input.stealth?.muteMediaOnCollapse ?? d.stealth.muteMediaOnCollapse,
+    pauseMediaOnSwitch: input.stealth?.pauseMediaOnSwitch ?? d.stealth.pauseMediaOnSwitch,
     contentProtection: input.stealth?.contentProtection ?? d.stealth.contentProtection
   }
 

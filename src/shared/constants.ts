@@ -549,3 +549,19 @@ export const UPDATE_STALL_MS = 60_000
  */
 export const UPDATE_SPAWN_GRACE_MS = 3_000
 
+/**
+ * 退出流程的时间上限（毫秒）：从 app.quit() 起算，到这个点还没走到 will-quit
+ * 就直接切进程。
+ *
+ * 正常退出是毫秒级的：before-quit 里同步落盘五份文件（config / sites /
+ * history / bookmarks / reading），will-quit 里拆窗口托盘、然后 app.exit(0)。
+ * 但只要其中一次写盘被拖住，整条链就停在半路，进程一直不退——实测在这台机器
+ * 上卡过四十多秒（那次的补丁是 will-quit 里改用 app.exit(0)，见 main/index.ts，
+ * 可它救不了「根本走不到 will-quit」的情形）。
+ *
+ * 后果在更新流程里最难看：应用内「更新并重启」是先起安装程序、宽限期过后才
+ * 退出，安装程序正等在外面换文件。退出卡住，用户看到的就是「应用关了，
+ * 然后什么都没有」。五秒是「写盘再慢也该写完」和「别让用户干等」之间的取舍。
+ */
+export const QUIT_WATCHDOG_MS = 5_000
+

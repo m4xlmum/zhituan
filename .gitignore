@@ -35,6 +35,9 @@ logs/
 spike/report.json
 spike/*.png
 spike/out/
+# 探针的编译产物：.nsi / .py 是源码，留下；makensis 打出来的 .exe 是本机跑一次
+# 就有的东西（几十 KB 一个），没有版本意义，也不该跟着仓库走。
+spike/**/*.exe
 
 # 评审截图：是过程证据，不是产物，体积也大
 .impeccable/review/
