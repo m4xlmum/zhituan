@@ -59,7 +59,7 @@ import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, readdir, rename, rm } from 'node:fs/promises'
 import { spawn as nodeSpawn } from 'node:child_process'
 import { join } from 'node:path'
-import { UPDATE_CHECK_TIMEOUT_MS, UPDATE_STALL_MS } from '@shared/constants'
+import { UPDATE_CHECK_TIMEOUT_MS, UPDATE_SPAWN_GRACE_MS, UPDATE_STALL_MS } from '@shared/constants'
 import type { UpdateState } from '@shared/types'
 import { isNewer, parseVersion } from '@shared/version'
 import type { ConfigStore } from './configStore'
@@ -77,12 +77,19 @@ export interface UpdateManifest {
   }
 }
 
+/** 起安装程序的返回。真实的（node 的 ChildProcess）能报「早夭」；探针的替身可以不戴 `on`，那就当「不会早夭」 */
+export interface SpawnedChild {
+  unref(): void
+  on?(event: 'exit', listener: (code: number | null) => void): void
+  on?(event: 'error', listener: (err: Error) => void): void
+}
+
 /** 起安装程序。抽成类型是为了探针能换掉它——探针验到「该起的时候才起」为止 */
 export type SpawnFn = (
   file: string,
   args: readonly string[],
   options: { detached: true; stdio: 'ignore' }
-) => { unref(): void }
+) => SpawnedChild
 
 export interface UpdateDeps {
   config: ConfigStore
@@ -98,6 +105,11 @@ export interface UpdateDeps {
   setNoticeVisible: (visible: boolean) => void
   quit: () => void
   spawn?: SpawnFn
+  /**
+   * 起安装程序之后、退出之前的宽限期（毫秒），默认 UPDATE_SPAWN_GRACE_MS。
+   * 探针给 0——「安装程序早夭」那条路要用另一个替身亲手点火，不需要真等三秒。
+   */
+  spawnGraceMs?: number
 }
 
 /**
@@ -375,8 +387,9 @@ export class UpdateService {
    * 装回上次那个目录、装完把应用自己叫回来。走这条路的前提是**用户按了这一下**
    * ——没有任何一条路上会自己装、自己重启。
    *
-   * 顺序是「先起、后退出」：spawn 之后本进程马上就走，安装程序 detached 着活下来
-   * （不 detach 会被 app.exit(0) 一起带走）。
+   * 顺序是「先起、宽限、后退出」：spawn 之后先看三秒（宽限期，见 spawnInstaller），
+   * 安装程序当场夭折就不退、说原因；活过宽限期本进程才走。退出之后安装程序
+   * detached 着活下来（不 detach 会被 app.exit(0) 一起带走）。
    */
   install(): void {
     const phase = this.state.phase
@@ -395,14 +408,46 @@ export class UpdateService {
 
   /** 起安装程序并退出。只有 install() 走得到这里，且只在 ready 那一支 */
   private spawnInstaller(): void {
-    const spawn = this.deps.spawn ?? ((f, a, o) => nodeSpawn(f, a as string[], o))
+    const spawn: SpawnFn = this.deps.spawn ?? ((f, a, o) => nodeSpawn(f, a as string[], o))
     log.info(`静默安装并重启：${this.installerPath}`)
+    // 上一次失败留下的那句原因，从这一次尝试起就不作数了
+    this.setState({ message: '' })
     const child = spawn(this.installerPath as string, SILENT_INSTALL_ARGS, {
       detached: true,
       stdio: 'ignore'
     })
-    child.unref()
-    this.deps.quit()
+
+    /*
+     * 宽限期：安装程序刚起来就死，应用不许跟着退。
+     *
+     * 真事（1.6.1 那天）：上一个版本的安装窗口在桌面上开了九十分钟没关，
+     * 互斥锁（APP_GUID 两个版本同一把）让新的安装程序在半秒内 Abort，安安静静。
+     * 应用照原样「起了就退」，于是用户看到的就是「点了更新并重启，应用关了，
+     * 然后什么都没有」——安装没开始，原因一个字都没有。宽限期内以任何姿态离场
+     * 都算「没跑起来」（一百多兆的静默安装不可能几秒内装完）：留在 ready——
+     * 那一份仍是校验过的——把原因说给人，修好之后（比如关掉那个安装窗口）
+     * 再按一下「更新并重启」就重装。活过宽限期才 unref + 退出：那时它已经在
+     * 真的干活，退出交接才交得出去。
+     */
+    const graceMs = this.deps.spawnGraceMs ?? UPDATE_SPAWN_GRACE_MS
+    let settled = false
+    const fail = (why: string): void => {
+      if (settled) return
+      settled = true
+      log.warn(`安装程序没能跑起来：${why}`)
+      this.setState({ phase: 'ready', message: why, pendingInstall: false })
+      child.unref()
+    }
+    child.on?.('error', (err) => fail(`安装程序没能启动：${reasonOf(err)}`))
+    child.on?.('exit', (code) => {
+      fail(`安装程序刚启动就退出了（代码 ${code ?? '未知'}）。若还有一个没关的安装窗口，先关掉它再试`)
+    })
+    setTimeout(() => {
+      if (settled) return
+      settled = true
+      child.unref()
+      this.deps.quit()
+    }, graceMs)
   }
 
   /**

@@ -26,6 +26,9 @@
  *     「全自动」就断在最后一步上（见 docs/spike-findings.md 的 Q48）。
  *   - **下载中被忽略要真的中止**（Q8d）：不留 `.part`、不写成「下载失败」、
  *     更不许把它装上；撤销之后能重来一遍。
+ *   - **安装程序刚起来就死，应用不许跟着退**（Q13）：真事是另一个安装窗口
+ *     占着互斥锁让新的在半秒内 Abort（见 docs/spike-findings.md 的 Q72）。
+ *     宽限期内夭折要留在 ready 说清原因，修好再按一下就重装。
  *   - **开关管的是自动检查，不管手动**：autoCheck=false 时 check() 一个请求都不
  *     发（用 HTTP 服务器的计数证明，不是看返回值），而手动 check({manual:true}) 照发。
  *   - **已经下过的那一份会被认出来**：再查一次直接 ready，不重下 111MB。
@@ -208,9 +211,22 @@ function makeStage(mods, options) {
       quits += 1
     },
     spawn: (file, args, spawnOpts) => {
-      spawns.push({ file, args, spawnOpts })
-      return { unref() {} }
-    }
+      // 替身也能「早夭」：_fire('exit', 2) 模拟安装程序刚起来就死
+      // （真事：另一个安装窗口占着互斥锁，新的在半秒内 Abort，见 Q13）
+      const listeners = {}
+      const child = {
+        unref() {},
+        on(ev, cb) {
+          ;(listeners[ev] = listeners[ev] || []).push(cb)
+        },
+        _fire(ev, ...a) {
+          ;(listeners[ev] || []).forEach((cb) => cb(...a))
+        }
+      }
+      spawns.push({ file, args, spawnOpts, child })
+      return child
+    },
+    spawnGraceMs: 0
   })
 
   const inflight = new Set()
@@ -240,6 +256,9 @@ function makeStage(mods, options) {
     last: () => events[events.length - 1]
   }
 }
+
+/** 等一个滴答：宽限期是 0 时 quit 也发生在下一个宏任务上，断言之前要让一拍 */
+const tick = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * 提示条每一次拨动，是否正好等于「那一刻有一个已知的新版本、且没被忽略」。
@@ -557,6 +576,7 @@ async function main() {
       const want = path.join(downloadDir, assetName('1.1.0'))
       if (got.file !== want) bad.push(`起的是 ${got.file}，该是 ${want}`)
     }
+    await tick() // quit 发生在宽限期（这里给的是 0）之后的一个宏任务上
     if (stage.quits() !== 1) bad.push(`quit 调了 ${stage.quits()} 次，该是 1 次`)
     check('Q8c', '下载途中按「更新并重启」→ 只排队不动手；下完自己起安装程序并退出', bad, {
       pendingInstall: mid.pendingInstall,
@@ -747,6 +767,7 @@ async function main() {
         if (got.spawnOpts.detached !== true) bad.push('没 detach——安装程序会被 app.exit(0) 一起带走')
         if (got.spawnOpts.stdio !== 'ignore') bad.push(`stdio 是 ${got.spawnOpts.stdio}`)
       }
+      await tick() // quit 发生在宽限期（这里给的是 0）之后的一个宏任务上
       if (stage.quits() !== 1) bad.push(`quit 调了 ${stage.quits()} 次，该是 1 次`)
     }
     check(
@@ -817,7 +838,50 @@ async function main() {
     check('Q12', '真的那份 release/latest.yml 解析得出来，且与盘上那个 exe 分毫不差', bad, parsed ?? undefined)
   }
 
-  // ------------------------------------------------------------ Q13 真地址（--net）
+  // ------------------------------------------------------------ Q13 安装程序刚起来就死
+
+  {
+    /*
+     * 真事（1.6.1 那天）：上一个版本的安装窗口在桌面上开了九十分钟没关，
+     * 互斥锁（APP_GUID 两个版本同一把）让新的安装程序在半秒内 Abort。
+     * 当时的应用照「起了就退」走，于是用户看到的是「点了更新并重启，
+     * 应用关了，然后什么都没有」。现在的规矩：宽限期内夭折不许退，
+     * 留在 ready 说清原因；修好了再按一下就重装。
+     */
+    const downloadDir = tmpDir('dl')
+    const stage = makeStage(mods, { configDir: tmpDir('config'), downloadDir, feedBase: base })
+    state.manifest = manifestText('1.1.0', sha, asset.length)
+    const bad = []
+
+    await stage.service.check({ manual: true })
+    await stage.settled()
+    if (stage.service.getState().phase !== 'ready') {
+      bad.push(`前提不成立：下完之后是 ${stage.service.getState().phase}，该是 ready`)
+    }
+
+    stage.service.install()
+    if (stage.spawns.length !== 1) bad.push('ready 之后没起安装程序')
+    // 安装程序半秒内死掉（互斥锁 / 被策略拦下）
+    stage.spawns[0].child._fire('exit', 2, null)
+    await tick()
+    if (stage.quits()) bad.push('安装程序刚起来就死了，应用却跟着退了——用户手里就什么都没有了')
+    const s1 = stage.service.getState()
+    if (s1.phase !== 'ready') bad.push(`装不成之后 phase 是 ${s1.phase}，该留在 ready（那一份仍是校验过的）`)
+    if (!s1.message) bad.push('装不成之后该有一句说给人的原因')
+
+    // 修好原因（比如关掉了那个安装窗口）再按一下：要真的能重装、真的退
+    stage.service.install()
+    await tick()
+    if (stage.spawns.length !== 2) bad.push(`再按一下累计起了 ${stage.spawns.length} 次，该是 2`)
+    if (stage.quits() !== 1) bad.push(`重装这一次 quit 是 ${stage.quits()}，该是 1`)
+    if (stage.service.getState().message) bad.push('重试那一下该把上次那句失败原因清掉')
+    check('Q13', '安装程序刚起来就死（另一个安装窗口没关）：应用不退、说清原因、修好再按就重装', bad, {
+      phaseAfterDeath: s1.phase,
+      message: s1.message
+    })
+  }
+
+  // ------------------------------------------------------------ Q14 真地址（--net）
 
   if (WANT_NET) {
     const configDir = tmpDir('config')
@@ -831,7 +895,7 @@ async function main() {
     const s = await stage.service.check()
     if (s.phase === 'error') {
       skip(
-        'Q13',
+        'Q14',
         '真地址取回来的版本号（URL 拼得对不对，只有它能验）',
         `这次没走通：${s.message}。这台机器上 github.com 时通时不通——同一支探针连着跑，`
           + '见过 170ms 就回来的六次，也见过二十秒不回、代理解析报 DIRECT 的几分钟。'
@@ -841,7 +905,7 @@ async function main() {
       const bad = []
       if (s.phase !== 'available') bad.push(`currentVersion 报 0.0.1 时 phase 是 ${s.phase}，该是 available`)
       if (!s.version) bad.push('没读到版本号')
-      check('Q13', `真地址取回来的是 ${s.version}（URL 拼对了，且走的是系统代理）`, bad, {
+      check('Q14', `真地址取回来的是 ${s.version}（URL 拼对了，且走的是系统代理）`, bad, {
         version: s.version,
         currentVersion: s.currentVersion
       })

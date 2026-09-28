@@ -42,8 +42,9 @@ const text = computed(() => {
         ? `正在下载更新 ${state.value?.percent ?? 0}%，下完自动重启安装`
         : `正在下载更新 ${state.value?.percent ?? 0}%`
     case 'ready':
-      // 不说「重启」，说清楚是「重启之后才会装上」：现在点别的都不会装
-      return `纸团 ${version.value} 已下载，重启后安装`
+      // 装过一次但没装成（安装程序当场夭折，比如还有一个安装窗口没关）时，
+      // message 里是那句说给人的原因——它比套话重要，按钮仍是「更新并重启」即重试
+      return state.value?.message || `纸团 ${version.value} 已下载，重启后安装`
     case 'error':
       return `更新下载失败：${state.value?.message || '原因不明'}`
     default:

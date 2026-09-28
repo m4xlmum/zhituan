@@ -244,7 +244,7 @@ npx electron spike/update-check.js
 探「自动检查更新」这条路上的每一段：查、比版本、下载、校验、装。esbuild 把真的
 `updateService.ts` / `configStore.ts` / `version.ts` 打成一包再 `require`（验真的，
 不验抄本），配置写在临时目录里，本机起一只 `http.createServer` 当假 GitHub——**它自己
-记着收到过几次请求**，所以「开关关掉就不许联网」是数出来的，不是看返回值。十五问：
+记着收到过几次请求**，所以「开关关掉就不许联网」是数出来的，不是看返回值。十六问：
 
 - **先钉死「不行的那条路」**：feed 供同版本 → 不提示；feed 指向一个已经关掉的端口 →
   `error`，且窗口里**一条提示都不冒**（不是「反正没显示」，而是 `setNoticeVisible`
@@ -276,6 +276,10 @@ npx electron spike/update-check.js
   **参数逐字是 `['/S','--updated','--force-run']`**（少一枚就没有「装完自己回来」，
   见 docs/spike-findings.md 的 Q48）、`detached`、`stdio: 'ignore'`，随后 quit 恰好一次
 - **已经下过的那一份会被认出来**：再查一次直接 `ready`，且**没有第二次下载请求**
+- **安装程序刚起来就死，应用不许跟着退**（Q13）：替身 `_fire('exit', 2)` 模拟
+  「另一个安装窗口占着互斥锁，新的在半秒内 Abort」（真事，见 docs/spike-findings.md
+  的 Q72）——宽限期内夭折要**留在 ready、quit 一次都没有**、提示条有一句说给人的
+  原因；再按一下「更新并重启」要能真的重装、真的退，且那句原因被清掉
 - **真实的那一份 `release/latest.yml`** 解析得出来：url、sha512、size 与盘上那个
   exe 逐项对得上（喂给它的是真构建产物，不是手写的样例）
 

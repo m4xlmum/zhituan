@@ -537,3 +537,15 @@ export const UPDATE_CHECK_TIMEOUT_MS = 15_000
  */
 export const UPDATE_STALL_MS = 60_000
 
+/**
+ * 起安装程序之后、退出之前留的宽限期（毫秒）。
+ *
+ * 真事：上一个版本的安装窗口没关，互斥锁（APP_GUID 两个版本同一把）让新的
+ * 安装程序在半秒内 Abort，安安静静——应用若照原样「起了就退」，用户手里就
+ * 什么都没有了：应用关了、安装没开始、原因一个字都没有。宽限期内夭折就留在
+ * ready 并把原因说给人（见 updateService.spawnInstaller）。三秒足够看出
+ * 「当场夭折」，也短到不拖正常安装——活过宽限期说明它已经在真的干活，退出
+ * 交接才交得出去。
+ */
+export const UPDATE_SPAWN_GRACE_MS = 3_000
+
