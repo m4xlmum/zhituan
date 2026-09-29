@@ -2,18 +2,31 @@
  * 注入到访客页面的样式。
  *
  * 注意：**窗口的**无极透明度不走这里——spike 证明 setOpacity 与透明窗口可以
- * 正常混合，因此不需要向网页注入 opacity。这里处理三件事：
+ * 正常混合，因此不需要向网页注入 opacity。这里处理四件事：
  *
  *   1. 让网页本身透明（否则透明窗口里会残留一块不透明的网页底色）；
  *   2. 藏起滚动条；
  *   3. 离线阅读的透明度（applyReaderOpacity）——这一条**只给本机文件**
- *      用，网页永远不许吃到它。第 1、2 条不分对象，第 3 条分；而且第 3 条
- *      还要**撤得回来**，因此它不走 insertCSS（原因见 applyReaderOpacity），
- *      与上面两块不是一条路。
+ *      用，网页永远不许吃到它；
+ *   4. 离线阅读的排版三项：字号 / 行距 / 左右留白（applyReaderTypeset），
+ *      同样只给本机文件里**由 Chromium 自己排**的那些（TXT 这一类）。
+ *
+ * 第 1、2 条不分对象，第 3、4 条分——它们不进 injectPageStyles 那一张样式的
+ * 主要原因还不是「分对象」，而是**它们都要随配置当场改**（用户正拖着那几条
+ * 滑块），于是必须撤得回来、也必须改得动。两处都走 CSSOM 上的行内声明
+ * （理由见 applyReaderOpacity 那一段）。
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 import type { WebContents } from 'electron'
+import {
+  READER_FONT_MAX,
+  READER_FONT_MIN,
+  READER_LINE_MAX,
+  READER_LINE_MIN,
+  READER_MARGIN_MAX,
+  READER_MARGIN_MIN
+} from '@shared/constants'
 import { log } from './logger'
 
 /** 让页面背景透明，否则透明窗口里会残留一块不透明的网页底色 */
@@ -121,5 +134,78 @@ export async function applyReaderOpacity(wc: WebContents, value: number): Promis
   } catch (err) {
     // 页面可能已在导航中被销毁，属于正常竞态
     log.warn('注入阅读透明度失败', err)
+  }
+}
+
+/**
+ * 离线阅读的排版三项：字号 / 行距 / 左右留白。
+ * **调用方必须先判定这一页是本机文件**（TabManager 用 @shared/url 的 isLocalFile）
+ * ——网页永远不许吃到它。
+ *
+ * ## 它落在哪
+ *
+ * 这一页是 Chromium 自己渲染的纯文本：整篇文档就是一棵子树，`document.body`
+ * 底下躺着一个 `<pre>`，几百万字全在里面（实测见 spike/txt-page.js：用户那本
+ * 6.4MB 的小说排出来是一个 354 万字的 `pre`，文档高 308 万像素）。
+ * UA 样式表给它的排版是 `font: 13px monospace; white-space: pre-wrap;
+ * word-wrap: break-word; padding-left: 0; max-width: none`。
+ * 我们碰不到它的结构（那一页的每一行都是 Chromium 排的），能碰的只有
+ * **写在那个 `pre` 上的样式**——因此这三项就落在它身上。
+ *
+ * ## 留白为什么用 padding，不用 width / max-width
+ *
+ * 本机 EPUB 那一页的同类注入写的是 `width`（那一页的容器是我们画的），这一页
+ * **不能照抄**：UA 给的 `pre { max-width: none }` 是一条**具体的**长度声明，
+ * 而 `width` 在「max-width 为 none」时没有任何对手，于是 `width: 60%` 会被
+ * 无视，正文铺成一条不换行的横带、横向滚出去。`padding-left/right` 没有这个
+ * 问题：它加在盒子内侧，`pre-wrap` 照旧在少了几十像素的行盒里折行。
+ * 用百分比而不是像素，与书页那份一致——换个窗口宽度读到的还是同一份版心。
+ *
+ * ## 为什么是行内 CSSOM，而不是 insertCSS
+ *
+ * 与 applyReaderOpacity 逐条相同：**撤得掉**（自己写的自己删）、**拿到的最强**
+ * （行内的 !important 压过页面样式表里的任何规则，UA 的 `pre{}` 更是不在话下）、
+ * **不碰 CSP**（CSP 管不着 CSSOM 上直接写的属性）。这一条尤其重要：用户正拖着
+ * 那三条滑块，每一次改动都要当场落进去。
+ *
+ * ## 为什么不等默认值就不写
+ *
+ * 配置里只有一份字号（`ui.readerFontSize`），本机 EPUB 那一页读的也是它。
+ * 于是 17px / 1.85 / 6% 这一组默认值在两边说的是同一件事。代价是**打开一本
+ * TXT 的默认样子变了**：从 Chromium 的 13px monospace 变成 17px——这正是
+ * 用户要的（那 13px 在 903×508 的窗口里读小说本来就偏小），也是两页字号
+ * 终于对齐的那一步。这一条写在 README 里。
+ *
+ * 传进来的值在这里再夹一遍：这三项在 configStore 里没有夹（那三个字段是
+ * 直接取的），手工改坏的配置能一路漏到这儿，而它们**会进样式**。
+ */
+export async function applyReaderTypeset(
+  wc: WebContents,
+  typeset: { fontSize: number; lineHeight: number; margin: number }
+): Promise<void> {
+  const 夹 = (v: number, min: number, max: number): number =>
+    Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : min
+
+  const 字号 = 夹(typeset.fontSize, READER_FONT_MIN, READER_FONT_MAX)
+  const 行距 = 夹(typeset.lineHeight, READER_LINE_MIN, READER_LINE_MAX)
+  const 留白 = 夹(typeset.margin, READER_MARGIN_MIN, READER_MARGIN_MAX)
+
+  // 行距是**无单位倍数**（`line-height: 1.85` 这种写法），于是它随字号一起缩放
+  // ——这正是无单位行距的意义，也是书页那份写进样式表的形式。
+  const 脚本 = `(() => {
+    const 目标 = document.querySelector('pre') || document.body
+    if (!目标) return
+    const 样式 = 目标.style
+    样式.setProperty('font-size', '${字号}px', 'important')
+    样式.setProperty('line-height', '${行距}', 'important')
+    样式.setProperty('padding-left', '${留白}%', 'important')
+    样式.setProperty('padding-right', '${留白}%', 'important')
+  })()`
+
+  try {
+    await wc.executeJavaScript(脚本)
+  } catch (err) {
+    // 页面可能已在导航中被销毁，属于正常竞态
+    log.warn('注入阅读排版失败', err)
   }
 }

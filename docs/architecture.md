@@ -154,7 +154,9 @@
     ——**网页永远吃不到它**（与第 5、17 条同一条边界）。TXT 那一页是 Chromium 自己
     渲染的，界面侧没有那座桥（访客页不带 preload），因此值只能由主进程写进去：
     写配置的路不止一条，所以这件事挂在 `ConfigStore.subscribe` 上
-    （`TabManager.refreshReaderOpacity()`），与界面那份镜像的广播同一处。
+    （`TabManager.refreshReaderView()`），与界面那份镜像的广播同一处。
+    它一次刷**两件事**——透明度与排版三项（第 22 条）：对象、时机、判据完全一样，
+    分开两处写等于把同一条判据抄两遍，那两条迟早会漏掉其中一条路。
     **注入方式是 CSSOM 上的一条行内声明**（`documentElement.style.setProperty('opacity',
     v, 'important')`），不是 `wc.insertCSS`：`removeInsertedCSS` 对 **user origin** 注入的
     表**不报错也不生效**（Electron 44.4.3 实测，default origin 同一对调用正常），
@@ -185,6 +187,24 @@
     够不着——主进程走这条路没有这个限制（`spike/media-pause.js`：收起那一组 Q1–Q10、
     切走那一组 Q11–Q16）。
 
+22. **本机 TXT 的排版三项只能写在那个 `pre` 上，而且留白只能走 `padding`。**
+    字号 / 行距 / 左右留白这一组是**一份配置**，落点却有三种：本机 EPUB 那一页是自家排的
+    （书页右下角那枚 Aa 把三个自定义属性写进 `:root`，Shadow DOM 里的正文继承得到）；
+    本机 PDF 不吃它（字印在位图里，想放大得改缩放）；而**本机 TXT 那一页是 Chromium
+    自己渲染的**——整篇文档就是它生成的一个 `<pre>`（用户那本 354 万字的小说全在里面），
+    页面上挂不住任何控件，能碰的只有写在它身上的样式。于是顶栏长一枚 Aa（`TopBar.vue`）
+    开一张面板（`OpenPopoverRequest.kind === 'typeset'`），主进程把三项写进那个 `pre`
+    （`pageStyler.applyReaderTypeset`）。
+    **不能照抄 EPUB 那一页的写法**：那边写的是 `width`，而 UA 给 `pre` 的是
+    `max-width: none`——`width` 在它面前没有任何对手，于是 `width: 60%` 被无视，正文
+    铺成一条不换行的横带、横向滚出去。留白因此走 `padding-left/right`（加在盒子内侧，
+    `pre-wrap` 照旧在少了几十像素的行盒里折行），用百分比让换个窗口宽度读到的仍是同一份
+    版心。注入方式与第 20 条同一条路（行内 CSSOM 的 `!important`：撤得掉、最强、不碰 CSP），
+    重注入的时机也同一处（`applyPageStyles` 与 `refreshReaderView`）。
+    边界仍然只有一条：**网页永远吃不到它**，判据还是 `isLocalFile`（谓词多了一层
+    `isLocalPdf` 的反面，见 `@shared/url` 的 `isLocalText`，那是给界面判断那枚键
+    此刻管不管得着用的）。
+
 > 早期版本用 `setShape` 裁剪窗口的命中区域来实现「隐藏区域点击穿透」。
 > 改为收起成球之后这套机制已整体移除：窗口真的缩小了，就不需要再靠裁剪
 > 去欺骗命中测试，`setShape` 也不再有存在的理由。
@@ -208,7 +228,8 @@ src/renderer/  chrome 界面 / 弹出面板 / 系统设置 / PDF 阅读页
 | `src/main/services/geometry.ts` | 版面矩形计算，坐标判断的唯一来源 |
 | `src/main/services/updateService.ts` | 更新那一路：查 `latest.yml` → 比版本 → 下载并校验 sha512 → 起安装程序。**不用 electron-updater** 的三条理由写在文件头 |
 | `src/main/services/pdfReader.ts` | 本机 PDF 那条路：`zhituan-pdf://` 的两张面（字节与资源）、token ↔ 路径的对应表、阅读页的地址 |
-| `src/main/services/pageStyler.ts` | 注入访客页面的三样东西：透明底、藏滚动条、离线阅读透明度在 **TXT 那一半**上的 `opacity`（第三条只给本机文件，见第 20 条；PDF 那一半由页面自己落在画布底色上） |
+| `src/main/services/pageStyler.ts` | 注入访客页面的四样东西：透明底、藏滚动条、离线阅读透明度在 **TXT 那一半**上的 `opacity`、以及离线阅读的排版三项（字号 / 行距 / 左右留白，写在那个 `pre` 上）。**后两样都只给本机文件**（见第 20、22 条；PDF 那一半由页面自己落在画布底色上，EPUB 那一页自己从配置里读） |
+| `src/renderer/src/composables/usePopover.ts` | 「从按下的那一格上开一张弹出面板」的唯一一处：量锚点、报给主进程摆位（顶栏那枚 Aa 与右栏那四格共用） |
 | `src/renderer/src/home/useRows.ts` | 起始页的行模型与交互：三套主题共用，世界组件只负责画 |
 | `src/renderer/src/pdf/PdfApp.vue` | 阅读页：pdf.js 把一页画进画布，再把纸收掉、把字上成一份固定的近黑墨（这一页不写主题，见 `useTheme.ts`；排版在 `styles/pdf.css`）；离线阅读透明度在这一页上落的是**画布的元素底色**（那张纸），不是 `opacity`（见第 20 条） |
 | `src/renderer/src/pdf/keying.ts` | 键控本身：这一页的纸是哪一张（有没有、浅还是深）、墨的零点在哪儿、要不要翻面 |

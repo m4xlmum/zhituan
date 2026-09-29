@@ -29,6 +29,7 @@ import type { AppConfig, TabState } from '@shared/types'
 import { isLocalFile } from '@shared/url'
 import Icon from './Icon.vue'
 import OpacitySlider from './OpacitySlider.vue'
+import { openPopoverAt } from '../composables/usePopover'
 import { useWindowDrag } from '../composables/useWindowDrag'
 
 const props = defineProps<{
@@ -43,24 +44,7 @@ const emit = defineEmits<{ patch: [patch: ConfigPatch] }>()
 /** 整条栏可拖动。按在按钮与滑块上是操作，其余地方（格子之间、分隔线、栏内空白）都是拖窗口 */
 const drag = useWindowDrag()
 
-type PopoverKind = 'sites' | 'history' | 'bookmarks' | 'uaZoom'
-
 const zoomPercent = computed(() => Math.round((props.activeTab?.zoom ?? 1) * 100))
-
-/** 面板锚点取自按钮自身的位置，主进程据此把它摆在按钮附近 */
-function openPopover(kind: PopoverKind, event: MouseEvent): void {
-  const el = event.currentTarget as HTMLElement
-  const r = el.getBoundingClientRect()
-  void window.zhituan.ui.openPopover({
-    kind,
-    anchorRect: {
-      x: Math.round(r.left),
-      y: Math.round(r.top),
-      width: Math.round(r.width),
-      height: Math.round(r.height)
-    }
-  })
-}
 
 /**
  * 缩放这三格。它们作用在**某一页**上，因此停在起始页 / 设置上时没有可作用的对象
@@ -191,11 +175,11 @@ function togglePauseOnSwitch(): void {
 
       <div class="sep" />
 
-      <button class="item" title="我的站点 / 热门站点" @click="openPopover('sites', $event)">
+      <button class="item" title="我的站点 / 热门站点" @click="openPopoverAt('sites', $event)">
         站点
       </button>
-      <button class="item" title="历史记录" @click="openPopover('history', $event)">历史</button>
-      <button class="item" title="书签" @click="openPopover('bookmarks', $event)">书签</button>
+      <button class="item" title="历史记录" @click="openPopoverAt('history', $event)">历史</button>
+      <button class="item" title="书签" @click="openPopoverAt('bookmarks', $event)">书签</button>
 
       <div class="sep" />
 
@@ -274,14 +258,51 @@ function togglePauseOnSwitch(): void {
   padding: 4px;
   background: var(--zhituan-surface);
   border-left: 1px solid var(--zhituan-hairline);
+
+  /*
+   * 三条透明度滑块的轨道长度**按窗口高度算**，而不是写死 56px。
+   *
+   * 写死时的账（实测，spike/rail-hit.js 与 preview.js 的 RAIL_STACK）：
+   * 默认档 960×540 下留给功能栈的正好是 488px，内容也是 488px，一格不多
+   * 一格不少；可**窗口只要矮一点，最底下那条「阅读」滑块就被推到折叠线以下**。
+   * 用户在 903×508 上量到的溢出是 26px——那条滑块（横条转 90° 画的，整条 56px）
+   * 只剩上面 31px 露在外面，而折叠线以下先是窗口缩放下边手柄、再往下是空白。
+   * 于是**它的拇指在约 60% 以下就整颗消失在裁剪线外**：低值那半条轨道既看不见
+   * 也按不到，拖到那儿读数就不再跟手。用户报的「拖了一点变化都没有」正是这个。
+   *
+   * 因此轨道改成「有多少地方就画多长」：本栏的纵向开销是固定的（下面那串
+   * 数字就是它），把剩下的按三条均分，再夹在 30px（还拖得动的下限）与 56px
+   * （默认档的那个长度）之间。窗口够高时它就是 56px，与从前一模一样；
+   * 变矮时三条一起缩，谁也不会被裁掉。
+   *
+   * 那几个常数是怎么来的（全部是实测出来的固定开销）：
+   *   52px  = 顶栏 44 + 本栏上下内边距 4×2；
+   *   227px = 栈里那 9 个固定高度的格子（26px 一个）与 3 条分隔线（1px 高
+   *           + 上下各 3px 外边距）＝203px，加上 13 个子项之间的 12 条 2px 缝
+   *           ＝24px；
+   *   87px  = 每个滑块自己那两行小字与内边距（12+1+12+1+2+1＝29px）乘三条。
+   * 合计 366px，于是三条轨道一共能拿到「100vh − 366px」，每条再除以三。
+   * 加了这几项、或改了格子的高度，这个数就要跟着改一次——它是量出来的，
+   * 不是推出来的。
+   */
+  --zhituan-rail-track: clamp(30px, calc((100vh - 366px) / 3), 56px);
 }
 
 /*
  * 顶栏藏起来之后，球浮在本栏顶端。
  * 不给它让位的话，第一个按钮就被压在球底下了。
+ *
+ * 让位吃掉的高度必须从轨道预算里扣掉——否则那 26px 的老毛病会以同样的方式
+ * 回来（顶栏藏起来 = 少了 48px 可用高度，三条轨道一起缩才补得上）。
+ * 扣的就是上面刚加的那一段内边距，因此这里按那几个变量写，不另抄一个数字。
  */
 .rail.ball-top {
   padding-top: calc(4px + var(--zhituan-ball-size) + var(--zhituan-ball-margin) * 2);
+  --zhituan-rail-track: clamp(
+    30px,
+    calc((100vh - 366px - var(--zhituan-ball-size) - var(--zhituan-ball-margin) * 2) / 3),
+    56px
+  );
 }
 
 .stack {
@@ -291,7 +312,9 @@ function togglePauseOnSwitch(): void {
   flex-direction: column;
   gap: 2px;
   /* 窗口矮的时候这一列放不下，允许纵向滚动；横向必须裁掉——
-     透明度滑块是横条转 90° 画出来的，它的布局盒比栏宽得多 */
+     透明度滑块是横条转 90° 画出来的，它的布局盒比栏宽得多。
+     上面那条 --zhituan-rail-track 把三条滑块按窗口高度缩过一遍之后，
+     窗口高到 456px 以上就不再溢出了；再矮才轮到这一列自己滚。 */
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;

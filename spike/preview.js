@@ -51,13 +51,27 @@
  *   npx electron spike/preview.js --notice 1.1.0 --notice-phase ready --theme night
  *   npx electron spike/preview.js --drag-probe     # 逐个位置按一下，问「这里按下去起的是拖动还是缩放」
  *   npx electron spike/preview.js --popover --bg 0.35   # 弹出面板也是另一份文档，同样要问一遍
- *   npx electron spike/preview.js --popover --kind tabs # 面板有五张，换一张看
+ *   npx electron spike/preview.js --popover --kind tabs # 面板有六张，换一张看
+ *   npx electron spike/preview.js --popover --kind tabs --width 320 --height 360
+ *   # 上一行：面板这份文档的 .panel 是 width/height:100%，**尺寸得自己传对**，
+ *   #        否则面板被拉满整块视口、量出来的 panel 就是视口本身。
+ *   #        真实尺寸见 popoverWindow.ts 的 sizeOf：宽恒 320，高 420 / 360（标签页）/ 260（排版）
  *   npx electron spike/preview.js --desktop        # 界面背后垫一层模拟桌面：截图用
  *   npx electron spike/preview.js --collapsed --alpha --out spike/out/readme   # 带透明通道的球
  *   npx electron spike/preview.js --collapsed --ball-icon cat   # 球面上画哪个图标
  *   npx electron spike/preview.js --collapsed --width 160 --height 160 --ball-zoom 4
  *   npx electron spike/preview.js --collapsed --ball-image a.png --ball-fit glyph
  * 产物写在 spike/out/ 下：preview-<名字>.png 与 preview-<名字>.json
+ *
+ * ## 改这个文件时唯一必须先知道的一件事
+ *
+ * `MEASURE` / `POPOVER_MEASURE` / `PAGE_MEASURE` / `DRAG_PROBE` 这几段**整段都是
+ * 模板字符串**——它们是拿去渲染进程里执行的源码，靠反引号包着。因此**这些字符串
+ * 的注释里一个反引号都不能出现**：写进去就把字符串当场截断，报出来的是
+ * `Unexpected identifier 'xxx'` 或 `xxx is not a function`，指向的行号还会落在
+ * 看起来毫无问题的地方。这一条 2026-09-29 一轮里踩了两次（一次在 `MEASURE`、
+ * 一次在 `POPOVER_MEASURE`），两次的症状都像「别的地方坏了」。
+ * 要在注释里提选择器就直接写 `.row` / `.trow` 这种不带反引号的写法。
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -66,6 +80,48 @@ const esbuild = require('esbuild')
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const { makeTempUserData, removeTemp } = require('./probe-temp.cjs')
+
+/*
+ * 用户数据目录必须挪到临时目录里去——**这一条是 2026-09-29 补的，起因是一次并发跑**。
+ *
+ * 先前这一支没有做隔离（`live-app.js` 有，它抄一份真配置；这一支用的是假桥，
+ * 不需要那份真配置，于是顺理成章地什么都没设）。而不设的后果是：Chromium 的
+ * `Cache` / `GPUCache` 落在**默认**那个 `userData` 里——那正是**用户此刻正在跑
+ * 的那个 zhituan.exe** 用的同一个目录。于是探针一起来就抢缓存锁，
+ * 日志里冒出一串 `Unable to move the cache: 拒绝访问 (0x5)` 与
+ * `Gpu Cache Creation failed: -2`；并发跑两支时它们还互相抢（2026-09-29 同时
+ * 跑 `--drag-probe` / `--click-fallback` / `--click-screen`，`p-screen` 那份日志
+ * 头部就是这一串）。更早那次 `preview.js` 的 GPU 进程崩溃多半也是它——
+ * 用户的应用当时开着，缓存目录被占着。
+ *
+ * 挪走之后：缓存、GPU 缓存、会话状态全在这份临时目录里，跑完即弃；
+ * 与真应用、与彼此都不再有任何交集，同一台机器上并发跑几支也不会打架。
+ * `appData` 一起指过来是照 `live-app.js` 那道双保险的规矩——它虽然是为
+ * 主进程那句改名搬迁准备的，这里用不上，但两半指向同一处不会有别的副作用。
+ */
+const TEMP = makeTempUserData('zhituan-preview-')
+app.setPath('appData', TEMP)
+app.setPath('userData', TEMP)
+
+/*
+ * 落没落进去要当场确认，不能只信那句 setPath——这是 `live-app.js` 的规矩，
+ * 一字不差地搬过来：没落进去就**退出**，宁可不跑，也绝不在用户那份目录上
+ * 建缓存、写会话。
+ */
+if (path.resolve(app.getPath('userData')) !== path.resolve(TEMP)) {
+  console.error(
+    `[FAIL] userData 没落到临时目录（落在 ${app.getPath('userData')}），就此退出，绝不碰用户那份`
+  )
+  app.exit(1)
+}
+/*
+ * 收走自己那份临时目录。放在 `app.exit` 之前调用（见下面的收场段），
+ * 因为 `app.exit()` **不走 `will-quit`** ——这一点是 live-app.js 踩出来的。
+ * `will-quit` 这一手仍然挂着，管的是「走到正常退出那一条路」的场合。
+ */
+const 收走 = () => removeTemp(TEMP)
+app.on('will-quit', 收走)
 
 const args = process.argv
 const has = (flag) => args.includes(flag)
@@ -656,6 +712,34 @@ const MEASURE = `(() => {
       color: getComputedStyle(el).color,
       background: getComputedStyle(el).backgroundColor
     })),
+    /*
+     * 「Aa」（排版）那枚键，1.6.5 新加的一组。
+     *
+     * 为什么非得单独量：它夹在**标签条与窗口操作之间**，而上面那一排
+     * topIcons 取的是 .group:last-of-type——这一枚既不在首组（两屏的键）
+     * 也不在末组（窗口操作），两支现成的读数**一个都看不见它**。于是它
+     * 长得对不对、有没有把别的组挤走，就得自己量。
+     *
+     * 报五样。前四样是它自己：位置（它该落在标签条右端与窗口操作组之间，
+     * 不上不下）、可不可点（读本机 TXT 时可点、读网页时禁用——真机上那一半
+     * 由 txt-typeset.js 量，这里只量预览这两态的形状）、提示语、亮没亮。
+     * 第五样是**它右边那一组的起点**：这枚键的宽度一改，窗口操作组要么跟着
+     * 挪、要么被压——两个数摆在一起才看得出是哪一种。
+     */
+    typesetKey: (() => {
+      const key = document.querySelector('.topbar button[aria-label="排版"]')
+      if (!key) return null
+      const r = key.getBoundingClientRect()
+      const right = document.querySelector('.topbar .group:last-of-type')
+      return {
+        box: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+        text: key.textContent.trim(),
+        disabled: key.disabled,
+        on: key.classList.contains('on'),
+        title: key.getAttribute('title'),
+        右组起点: right ? Math.round(right.getBoundingClientRect().x) : null
+      }
+    })(),
     // 右栏里都有哪些功能，按上下顺序——顶栏藏起来时它是唯一的功能入口
     railButtons: [...document.querySelectorAll('.rail button')].map(
       (el) => el.getAttribute('title') ?? el.className
@@ -1017,6 +1101,31 @@ const POPOVER_MEASURE = `(() => {
     panelBorder: s?.borderTopColor ?? null,
     rowColor: row ? getComputedStyle(row).color : null,
     rowCount: document.querySelectorAll('.row').length,
+    /*
+     * 「排版」那一张独有的三行（1.6.5 新加）。
+     *
+     * 另外五张的每一行都是 .row，只有这一张用的是 .trow——因此上面那个
+     * rowCount 在它身上恒为 0，那是**问错了类名**，不是「一行都没画出来」。
+     * 这一栏把三行的标签 / 读数 / 上下限 / 步长 / 值 / 轨道实测矩形都报出来：
+     * 面板只有 260px 高，三行各自多高、轨道够不够长，是这一张唯一会坏的地方。
+     *
+     * 注意：这一段整个是模板字符串，**注释里不许出现反引号**（两个可选的
+     * 类名用点号写成 .row / .trow 就够了）——写进去会把字符串当场截断。
+     */
+    typeset: document.querySelectorAll('.trow').length
+      ? [...document.querySelectorAll('.trow')].map((el) => {
+          const input = el.querySelector('input.trange')
+          const r = input ? input.getBoundingClientRect() : null
+          return {
+            标签: el.querySelector('.tlabel')?.textContent?.trim() ?? null,
+            读数: el.querySelector('.tvalue')?.textContent?.trim() ?? null,
+            上下限: input ? input.min + '–' + input.max : null,
+            步长: input ? input.step : null,
+            值: input ? Number(input.value) : null,
+            轨道: r ? { w: Math.round(r.width), h: Math.round(r.height) } : null
+          }
+        })
+      : null,
     title: document.querySelector('.title')?.textContent?.trim() ?? null
   }
 })()`
@@ -1515,6 +1624,33 @@ app.whenReady().then(async () => {
       // 两屏那两颗键的实测配色：亮着的那颗是不是真的亮着，暗夜下靠肉眼分不清
       console.log(`SCREEN_KEYS ${JSON.stringify(measured.screenKeys)}`)
       /*
+       * 「Aa」那枚键（1.6.5）：它夹在两支现成读数的中间地带，谁都照不到它。
+       *
+       * 判据是「右组起点」比它自己的右沿大——两者之间还要留得下一道缝，
+       * 一旦这枚键变宽到把那道缝吃光，右组起点就会被推到它身上或者重叠，
+       * 那两个数当场挨上。null 表示这枚键没画出来，也是一种结果。
+       */
+      console.log(
+        `TYPESET_KEY ${JSON.stringify(
+          measured.typesetKey === null
+            ? null
+            : {
+                ...measured.typesetKey,
+                摆得下:
+                  measured.typesetKey.右组起点 === null
+                    ? false
+                    : measured.typesetKey.右组起点 >=
+                      measured.typesetKey.box.x + measured.typesetKey.box.w
+              }
+        )}`
+      )
+      const 排版键 = measured.typesetKey
+      if (排版键 && !(排版键.右组起点 >= 排版键.box.x + 排版键.box.w)) {
+        console.log(`TYPESET_KEY_BAD ${JSON.stringify({ 说明: '「Aa」压到了右边那一组', ...排版键 })}`)
+        app.exit(1)
+        return
+      }
+      /*
        * 三条透明度滑块各自长什么样，以及功能栈有没有被撑出滚动区。
        *
        * 只印「标签 / 读数 / 上下限 / 禁没禁」这四样：它们正是判据的全部——
@@ -1583,6 +1719,22 @@ app.whenReady().then(async () => {
           })}`
         )
       }
+    } else if (page === 'popover') {
+      /*
+       * 弹出面板那一份文档自己的一组读数。
+       *
+       * 先前这一档没有分支，面板一跑就落进下面那条 `else`、印出一行
+       * `PAGE {lines:null, area:null, …}`——因为 `PAGE_MEASURE` 问的那些东西
+       * （`.term` / `.modern` / 栏目线 / 主题菜单）都是起始页与设置页的，
+       * 面板上一个都没有。`POPOVER_MEASURE` 那边量的一整组数（六张面板各自的
+       * `panel` / `panelBg` / `panelBorder` / `rowColor` / `rowCount` / `title` /
+       * `alpha`）因此长期只进 JSON、不上终端：面板那一跑在终端里看起来像
+       * 「量不到」，其实是问错了地方。
+       *
+       * 现在整组照原样印出来（`left` / `top` 与面板尺寸都在 `panel` 里，
+       * 判据是它们必须落在 320×420 / 320×360 / 320×260 这几档之内）。
+       */
+      console.log(`POPOVER ${JSON.stringify(measured)}`)
     } else {
       /*
        * 起始页 / 设置页：几件只有量了才知道的事，当场印出来。
@@ -2164,5 +2316,6 @@ app.whenReady().then(async () => {
     }
   }
 
+  收走()
   app.exit(0)
 })

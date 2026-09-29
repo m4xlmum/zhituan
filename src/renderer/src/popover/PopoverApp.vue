@@ -1,16 +1,27 @@
 <script setup lang="ts">
 /**
- * 弹出面板。五种面板共用这一个组件，由 URL 的 ?kind= 决定内容。
+ * 弹出面板。六种面板共用这一个组件，由 URL 的 ?kind= 决定内容。
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { sectionTitle } from '@shared/constants'
+import {
+  DEFAULT_READER_FONT,
+  DEFAULT_READER_LINE,
+  DEFAULT_READER_MARGIN,
+  READER_FONT_MAX,
+  READER_FONT_MIN,
+  READER_LINE_MAX,
+  READER_LINE_MIN,
+  READER_MARGIN_MAX,
+  READER_MARGIN_MIN,
+  sectionTitle
+} from '@shared/constants'
 import type { Bookmark, HistoryEntry, PresetSite, SiteRecord, TabState } from '@shared/types'
 import { useConfig } from '../composables/useConfig'
 import { useBackgroundAlpha } from '../composables/useBackgroundAlpha'
 
-type Kind = 'sites' | 'history' | 'bookmarks' | 'uaZoom' | 'tabs'
+type Kind = 'sites' | 'history' | 'bookmarks' | 'uaZoom' | 'tabs' | 'typeset'
 
 const kind = (new URLSearchParams(location.search).get('kind') ?? 'sites') as Kind
 
@@ -34,7 +45,15 @@ const activeTabId = ref<string | null>(null)
 const uaMode = ref<'desktop' | 'mobile'>('desktop')
 
 const title = computed(
-  () => ({ sites: '站点', history: '历史记录', bookmarks: '书签', uaZoom: '显示', tabs: '标签页' })[kind]
+  () =>
+    ({
+      sites: '站点',
+      history: '历史记录',
+      bookmarks: '书签',
+      uaZoom: '显示',
+      tabs: '标签页',
+      typeset: '排版'
+    })[kind]
 )
 
 let unsubscribeTabs: (() => void) | null = null
@@ -145,6 +164,32 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
   if (!tabId) return
   void window.zhituan.page.setZoom({ tabId, op })
 }
+
+/*
+ * 离线阅读的排版三项。
+ *
+ * 与上面两条不一样的是：它**不作用在「某一页」上，而是作用在「离线阅读」这件事
+ * 上**。写的是 ui 里那三个字段，落款由两边各自去办——本机 TXT 那一页由主进程
+ * 把这三项写进它那个 pre（TabManager 的 applyPageStyles / refreshReaderView），
+ * 自家 EPUB 那一页自己从同一份配置里读（book/BookApp.vue 的 applyTypeset）。
+ * 因此这里不必传 tabId，也不必判有没有当前网页：值与对象都由主进程那一侧
+ * 对上号。于是**不必收面板**：用户要连着拖三条，拖完自己点别处收起。
+ *
+ * 与书页右下角那枚 Aa 打开的是同一组控件、同一份配置，两处改完的结果一致
+ * ——这是「一份配置、两处落点」这条规矩在界面上的样子（右栏第三条滑块与
+ * 它同源，见 Rail.vue）。
+ */
+function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
+  const value = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(value)) return
+  const ui =
+    key === 'font'
+      ? { readerFontSize: value }
+      : key === 'line'
+        ? { readerLineHeight: value }
+        : { readerMargin: value }
+  void window.zhituan.config.patch({ ui })
+}
 </script>
 
 <template>
@@ -219,6 +264,62 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
           <span class="row-title">{{ tab.title || '新标签页' }}</span>
           <button class="mini" title="关闭标签页" @click="closeTab(tab.id, $event)">✕</button>
         </div>
+      </template>
+
+      <!--
+        排版。离线阅读的正文那三项（字号 / 行距 / 左右留白）。
+        顶栏那枚 Aa 打开的是它，自家 EPUB 阅读页右下角那枚 Aa 打开的是同一组控件
+        ——后者长在书页里，因为那一页是我们自己画的；本机 TXT 那一页是 Chromium
+        自己渲染的，页面上没有一处能挂控件，所以只好长到顶栏上（见 shared/ipc.ts
+        的 OpenPopoverRequest.kind）。
+      -->
+      <template v-else-if="kind === 'typeset'">
+        <div class="section">正文</div>
+        <label class="trow">
+          <span class="tlabel">字号</span>
+          <input
+            class="trange"
+            type="range"
+            :min="READER_FONT_MIN"
+            :max="READER_FONT_MAX"
+            step="1"
+            :value="config?.ui.readerFontSize ?? DEFAULT_READER_FONT"
+            @input="setTypeset('font', $event)"
+          />
+          <span class="tvalue">{{ config?.ui.readerFontSize ?? DEFAULT_READER_FONT }}px</span>
+        </label>
+        <label class="trow">
+          <span class="tlabel">行距</span>
+          <input
+            class="trange"
+            type="range"
+            :min="READER_LINE_MIN"
+            :max="READER_LINE_MAX"
+            step="0.05"
+            :value="config?.ui.readerLineHeight ?? DEFAULT_READER_LINE"
+            @input="setTypeset('line', $event)"
+          />
+          <span class="tvalue">{{
+            (config?.ui.readerLineHeight ?? DEFAULT_READER_LINE).toFixed(2)
+          }}</span>
+        </label>
+        <label class="trow">
+          <span class="tlabel">留白</span>
+          <input
+            class="trange"
+            type="range"
+            :min="READER_MARGIN_MIN"
+            :max="READER_MARGIN_MAX"
+            step="1"
+            :value="config?.ui.readerMargin ?? DEFAULT_READER_MARGIN"
+            @input="setTypeset('margin', $event)"
+          />
+          <span class="tvalue">{{ config?.ui.readerMargin ?? DEFAULT_READER_MARGIN }}%</span>
+        </label>
+        <p class="hint">
+          只作用于正在读的这一份本机文本：TXT 这类由 Chromium 排的页，以及自家 EPUB
+          阅读页（那一页里也有一枚同样的 Aa）。网页不受影响。
+        </p>
       </template>
 
       <!-- 显示 -->
@@ -381,6 +482,67 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
   color: var(--zhituan-text-faint);
   font-size: 11px;
   line-height: 1.5;
+}
+
+/*
+ * 排版面板那三行：小标题 + 横条 + 读数。
+ *
+ * 与自家 EPUB 阅读页里那组（styles/book.css 的 .typeset__row）是同一套材料，
+ * 只是换了宽度——那一组的面板是自己画的、宽 300px，这一组在 320px 的弹出面板里。
+ * 不共用一个组件：那一边用的是全局样式表、这一边是 scoped，而两边的行高、
+ * 内边距都要跟着各自的容器走（书页那份底下还压着正文，要一点点半透明）。
+ *
+ * range 的轨道与圆点依然得自己画：`appearance: none` 之后浏览器不再给它们样式，
+ * 而各平台的默认外观在这一套配色里都不成立。轨道画在 runnable-track 上
+ * （不是 input 的背景），圆点靠负 margin 挪到轨道中央。
+ */
+.trow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 6px;
+}
+
+.tlabel {
+  flex: 0 0 auto;
+  width: 2.6em;
+  color: var(--zhituan-text-dim);
+  font-size: 12.5px;
+}
+
+.trange {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+.trange::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--zhituan-border);
+}
+
+.trange::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  margin-top: -4.5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--zhituan-accent);
+}
+
+.tvalue {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  color: var(--zhituan-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .empty {

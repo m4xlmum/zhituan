@@ -23,20 +23,28 @@ const POPOVER_H = 420
  * 被挤到屏幕外；一屏能列下的标签页数量也够用了，多出来的自己滚。
  */
 const TABS_H = 360
+/**
+ * 排版面板（离线阅读的字号 / 行距 / 左右留白）的高度。
+ *
+ * 与标签页面板同理：锚点也在顶栏，而它里面只有三行滑块加一句话，用不着
+ * 420 那么高——高出来的那截只是在窗口底下留一片空白。
+ */
+const TYPESET_H = 260
 const GAP = 6
 
-/** 面板尺寸按类型给。标签页列表不需要那么高 */
+/** 面板尺寸按类型给。标签页列表与排版面板都不需要那么高 */
 function sizeOf(kind: OpenPopoverRequest['kind']): { width: number; height: number } {
-  return { width: POPOVER_W, height: kind === 'tabs' ? TABS_H : POPOVER_H }
+  const height = kind === 'tabs' ? TABS_H : kind === 'typeset' ? TYPESET_H : POPOVER_H
+  return { width: POPOVER_W, height }
 }
 
 /**
  * 往锚点**下方**摆的类型。
  *
- * 默认往上摆是因为锚点大多在窗口底部（右栏）；标签页的锚点在顶栏上，
+ * 默认往上摆是因为锚点大多在窗口底部（右栏）；标签页与排版面板的锚点在顶栏上，
  * 再往上摆就飘到窗口外面去了。
  */
-const PREFER_BELOW: ReadonlySet<OpenPopoverRequest['kind']> = new Set(['tabs'])
+const PREFER_BELOW: ReadonlySet<OpenPopoverRequest['kind']> = new Set(['tabs', 'typeset'])
 
 /**
  * 「同一次点击的第二半」的时限，见 justClosed。

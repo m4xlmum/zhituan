@@ -19,10 +19,11 @@
 import { computed } from 'vue'
 import type { ConfigPatch } from '@shared/ipc'
 import type { OwnScreen, TabState } from '@shared/types'
-import { fileNameOf } from '@shared/url'
+import { fileNameOf, isLocalText } from '@shared/url'
 import Icon from './Icon.vue'
 import Ball from './Ball.vue'
 import TabStrip from './TabStrip.vue'
+import { openPopoverAt } from '../composables/usePopover'
 import { useWindowDrag } from '../composables/useWindowDrag'
 
 const props = defineProps<{
@@ -174,6 +175,34 @@ function goHome(): void {
 function toggleSettings(): void {
   void (props.screen === 'settings' ? window.zhituan.ui.leaveScreen() : window.zhituan.ui.openSettings())
 }
+
+/**
+ * 排版（离线阅读的正文字号、行距、左右留白）。
+ *
+ * 这里原先没有这枚键，因为它本来长在能改排版的那一页上：自家 EPUB 阅读页右下角
+ * 就有一枚 Aa。而**本机 TXT 那一页是 Chromium 自己渲染的**——整篇文档就是它
+ * 自己生成的一个 `pre`，我们一个控件都挂不上去。于是这枚键只能借顶栏落脚，
+ * 再开一张弹出面板（用户点名要的位置：顶栏加一枚 Aa）。
+ *
+ * 管得着的对象由 @shared/url 的 isLocalText 判：本机文件里除去 PDF 的那些
+ * （TXT 这类 Chromium 排的页，以及自家 EPUB 阅读页）。PDF 不算——那一页的字是
+ * 画进 canvas 的，没有字号可调，想放大得改缩放，那是右栏那三格的事。
+ *
+ * **不放宽成「任何时候都能点」**：右栏那三格缩放、第三条透明度滑块都是「没有
+ * 可作用的对象就禁掉」的规矩（见 Rail.vue），这一枚照同一条走。
+ */
+const canTypeset = computed(() => isLocalText(props.activeTab?.url))
+
+const typesetHint = computed(() =>
+  canTypeset.value
+    ? '排版：正文字号、行距、左右留白（只作用于正在读的这一份本机文本，网页不受影响）'
+    : '排版：此刻没有正在读的本机文本。先打开一本：起始页 → 离线阅读 → 打开文件…'
+)
+
+/** 面板是独立子窗口，主进程按这枚键的矩形把它摆在底下（见 popoverWindow.place） */
+function openTypeset(event: MouseEvent): void {
+  openPopoverAt('typeset', event)
+}
 </script>
 
 <template>
@@ -243,6 +272,26 @@ function toggleSettings(): void {
         <Icon name="plus" />
       </button>
     </TabStrip>
+
+    <!--
+      排版。一枚写着「Aa」的键，与自家 EPUB 阅读页右下角那一枚同一个意思
+      （见 openTypeset 那一段）。它排在**标签条与窗口操作之间**：
+      左边那一整片是「这一页 / 这几张网页」的东西，右边那一整片是「这扇窗」，
+      而它管的是「读的那份东西怎么排」——两头都沾一点，摆在这条界线上最不别扭。
+      它是这一组里唯一按「当前这一页是谁」决定能不能点的（见 canTypeset）。
+    -->
+    <div class="group">
+      <button
+        class="icon text"
+        :class="{ on: canTypeset }"
+        :disabled="!canTypeset"
+        :title="typesetHint"
+        aria-label="排版"
+        @click="openTypeset"
+      >
+        Aa
+      </button>
+    </div>
 
     <!--
       窗口操作。顺序：手机 · 置顶 · 最小化 · 最大化 · 关闭 · 悬浮球 · 收起右侧栏。
@@ -340,6 +389,22 @@ function toggleSettings(): void {
 .icon.on {
   color: var(--zhituan-accent);
   background: var(--zhituan-accent-soft);
+}
+
+/*
+ * 「Aa」那枚键里的字。
+ *
+ * 这一套图标规定不用字符冒充图标（见 Icon.vue），而这一枚是个例外——它
+ * **本来就是字**：字号这件事拿一对字母来表示比画什么图形都直接，自家 EPUB
+ * 阅读页右下角那一枚用的也是这两个字母、同一个意思。
+ * 字重给到 600 让它在一片 1.6 描边的线性图标里立得住；13px 是与旁边 15px
+ * 的图标视觉重量相当的那一档；行高压成 1 是为了不让它把行盒撑高、把这一枚
+ * 顶得比邻居高半个像素。
+ */
+.icon.text {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .icon.danger:hover {

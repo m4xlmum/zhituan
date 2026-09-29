@@ -492,8 +492,8 @@ npx electron spike/preview.js --no-topbar
 | `--home --body --plate local --open-file 斗破苍穹.txt,三体（全集）.pdf` | 停在「离线阅读」上，点那行「打开文件…」，让假桥代劳的那次选文件返回这两本。不给 `--plate` 时它自己就是「离线阅读」——那行只长在那一栏里 |
 | `--theme night` | 换一套主题名。**只有起始页那一份文档读它**（1.5.1 起）——所以配 `--home` 才是「换皮」，配别的页面时它只是把 `ui.homeTheme` 记进那一份 JSON，画面一个像素都不动。唯一的例外是 `--settings`：设置页那颗选中的主题按钮读的就是 `ui.homeTheme`，于是 `--settings --theme crt-green` 会看到磷绿那颗亮着 |
 | `--settings` | 系统设置 |
-| `--popover` | 弹出面板（另一扇窗、另一份文档） |
-| `--popover --kind tabs` | 面板有五张（站点 / 历史记录 / 书签 / 显示 / 标签页），换一张看 |
+| `--popover` | 弹出面板（另一扇窗、另一份文档）。终端上打一行 `POPOVER`：整组读数照 `POPOVER_MEASURE` 原样印出来——`kind` / `alpha`（写在文档根上的那个值，空串就意味着这份文档没写、底板不会淡）/ `panel`（面板那一整块的矩形）/ `panelBg` / `panelBorder` / `rowColor` / `rowCount` / `title`，排版那一张另给一栏 `typeset`（三行的标签 / 读数 / 上下限 / 步长 / 值 / 轨道实测矩形）。**1.6.5 起才印**：在这之前面板那一档落进的是起始页那条分支，打出来是一行全 null 的 `PAGE`（那套读数问的 `.term` / `.modern` / 栏目线面板上一个都没有），面板这一支在终端里看起来像「量不到」。`rowCount` 数的是 `.row`，而**排版那张的每一行是 `.trow`**——它上面 `rowCount` 为 0 不是「一行都没画」，是问错了类名，要读 `typeset` 那一栏。**尺寸必须自己传对**：面板这份文档的 `.panel` 是 `width/height: 100%`，只给 `--popover` 的话它会被拉满整块视口（960×540），量出来的 `panel` 就是视口本身、不是面板——真实窗口尺寸在 `popoverWindow.ts` 的 `sizeOf` 里，宽度恒为 **320**，高度按类型：**420**（站点 / 历史记录 / 书签 / 显示）、**360**（标签页）、**260**（排版）。 |
+| `--popover --kind tabs` | 面板有六张（站点 / 历史记录 / 书签 / 显示 / 标签页 / 排版），换一张看 |
 | `--bg 0.35` | 把界面底板透明度设成这个值。看的是「底板淡了、字没淡」 |
 | `--maximized` | 已最大化：没有两栏也没有正文，只在右上角那一小块里浮着「还原键 + 球」。不给尺寸时按那一小块的尺寸开窗（80×48） |
 | `--notice 1.1.0` | 界面里多出更新提示条那一行（地址栏与网页之间）。`--notice-phase ready\|downloading\|error` 换那一态，`--notice-percent 42` 给下载中那条进度线一个长度，`--notice-message` 给失败那一句原因。`--notice-pending` 是「下载中、且用户已经按过『更新并重启』」那一态：那句话变成「下完自动重启安装」、**那颗按钮收起来**（该按的都按完了，没什么可再点的），而 ✕ 照旧在。不给 `--notice` 就一条提示都没有——那正是「没有新版本」的正常样子 |
@@ -523,11 +523,25 @@ JSON 里的 `rightButtons` 是顶栏右侧那排按钮的顺序与坐标（`topI
 有没有把右栏撑出可视区——`sliders` 每一行报的是**标签 / 读数 / 范围 / 禁用 / 灰着 / tooltip**
 六项（tooltip 落在 `input` 上而不是外框上，读错地方会整列都是 null），其中「阅读」那一条
 的 `禁用` 与 `灰着` 只在读一本本机文件时才是 false（`--reader`），`stackScroll` 给的
-`overflow` 在默认档 960×540 是 0（三条正好放满），迷你档 480×270 是 264。
+`overflow` 在默认档 960×540 是 0（三条正好放满），迷你档 480×270 是 **186**。
+**1.6.5 起那三条滑块的轨道长度是按窗口高度算的**（`Rail.vue` 的 `--zhituan-rail-track`），
+于是两个数都跟着动了：903×508 这一档从「溢出 26px」变成 0（见 Q77），而 480×270 那一档
+从 264 收到 186——矮到 270 时公式 `clamp(30px, (100vh − 366px)/3, 56px)` 被下界夹住，
+每条轨道从 56px 缩到 30px，三条共省 78px，与 264 − 186 正好对上（量它在真身上最细的是
+`rail-hit.js`，`RAIL_STACK` 只给总数）。
 `themePanel` / `themeItem` 用来核对主题
 列表有没有被折进滚动区。`surfaces` 是底板透明度那一对关系的实测值——
 `alpha` 是界面根上那个变量，`bar` 是顶栏的实测底色（应当带上这个 alpha），
 `ink` 是图标与文字的实测颜色（必须是不带 alpha 的实色，拉到 0 也要看得见）。
+`typesetKey` 是 1.6.5 新加的那枚「Aa」（顶栏的排版入口）——它得单列一项，是因为
+它夹在**标签条与窗口操作之间**，而 `rightButtons` 与 `topIcons` 取的都是
+`.group:last-of-type`（那一组是窗口操作），首组又是两屏那两颗键：两支现成的读数
+一个都照不到它。报的是它自己的矩形 / 写上来的字（`Aa`）/ `禁用` / `亮没亮` / `title`，
+外加**右边那一组的起点**——后一个数才是判据：它必须 ≥ 这枚键的右沿，否则这枚键
+就把窗口操作组压住了（那种情形探针打 `TYPESET_KEY_BAD` 并当场 `exit(1)`）。
+`禁用` 那一格两态各是一句话：读网页时 true（提示语让人先打开一本），
+读本机 TXT 时 false 且 `on` 为 true（`--reader`）——真机上「点它开面板、面板里拖三项」
+那一半由 `txt-typeset.js` 量，这里只量预览这两态的形状。
 顶栏的 `stripFits` / `tabBoxes` / `lastTabOverflow` / `fallback` 几项是给标签条用的：
 让位了没有、每一格的宽度、最后一格有没有被容器啃掉一条边。`tabBoxes` 里的
 `closeVisible` 走的是 `checkVisibility`，算的是「真的画出来了没有」而不是
@@ -768,9 +782,72 @@ env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
 它还有第二条用途：**跑完之后 `%APPDATA%` 里不该多出任何东西**。这一跑前后各列一次
 那个目录，是 Q68 的判据（那一跑当时留下过一个只有 4 个条目的 `zhituan`）。
 
-`live-app.js` 与 `book-tab.js` 都要 `require` 真主进程，因此**两道隔离缺一不可**：
+```bash
+env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-page.js
+```
+
+本机 TXT 那一页**长什么形状**。它不 require 真主进程——一只手搭起
+`BaseWindow(show:false)` + `WebContentsView`（与访客视图同一份 `webPreferences`），
+`loadURL(file://…)` 之后把那一页读一遍：`characterSet` / `contentType`、`body` 底下
+几棵子树、`pre` 有多少字、`documentElement.scrollHeight`、以及那个 `pre` 的排版
+（`font / white-space / word-wrap / padding-left / max-width`）。两本素材都跑：
+探针现写的小样本，与用户机器上那本真的（只读，`--txt <路径>` 可换）。
+读数见 Q78 与 `spike/out/txt-page.json`。**它那一半像素是作废的**：`show:false` 的
+窗口不合成，`capturePage` 一律回 `Current display surface not available for capture`
+——要看像素请用下面那一支。`--no-sandbox` 在这个宿主里必须加（见文件头那段）。
+
+```bash
+env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-big-opacity.js
+```
+
+**几百万像素高的那一本上，阅读透明度还成不成立**（Q77 的前半截）。`txt-page.js`
+已经证明行内 `opacity: 0.4 !important` 写得进去、`getComputedStyle` 也回 0.4，但它
+分不出「写进去了」与「合成器照做了」——只有把**合成之后的像素**量一遍才有答案。
+这一支在**真身**上跑（抄一份 userData、require 真主进程、走真桥开标签），量法与
+`live-app.js` 的 A12 **逐字相同**（黑白两种底的幅），因此两边读数可以直接对看。
+默认拿用户机器上那本 6.4MB / 354 万字的小说（只读），`--txt <路径>` 可换。
+实测：幅 **255 → 102 → 255**（算出 opacity `1 → 0.4 → 1`）。读数落
+`spike/out/txt-big-opacity.json`，像素没跟着动就以非零码退出。
+
+```bash
+env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js
+env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js --w 960 --h 540
+```
+
+**右栏那条「阅读」滑块到底被谁接着**（Q77）。这一支比 `preview.js` 的 `RAIL_STACK`
+多问三件事，因为「机制是活的」已经由 A12 与 `txt-big-opacity.js` 答过了，剩下的是
+**界面**那一半：① `.stack` 的 `clientHeight / scrollHeight / scrollTop`，以及三条滑块
+**转 90° 之后**真正占的那块矩形（`getBoundingClientRect` 给的就是变换后的，量它才
+对得上）；② 沿第三条的竖线从上到下打一串 `elementFromPoint`，看每一段归谁——
+被裁掉的那截是还归滑块，还是漏给了 `.rail`（漏给栏就等于「按下去变成拖窗口」）、
+漏给了 `ResizeFrame` 的手柄；③ **用 `sendInputEvent` 派真鼠标输入**从拇指位置往下拖，
+读配置变没变，再沿轨道逐段各按一次（合成事件绕过了命中与裁剪，A12 走的就是那条路，
+所以它证明不了用户那一下）。默认跑用户那台机器的窗口尺寸 903×508（`--w/--h` 可换）。
+读数落 `spike/out/rail-hit.json`。
+
+```bash
+env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-typeset.js
+```
+
+**排版三项端到端走一遍**（Q78）。四问：① 默认那一组（17px / 1.85 / 6%）有没有落到
+那个 `pre` 上——量的是 `getComputedStyle` **算出来的值**，不是我们写进去的那串字，
+因为「写进去了没生效」正是这一条最可能的坏法；② 顶栏那枚 Aa 在不在、读本机文本时
+可用、**切到一张网页就禁用**；③ 点它 → 排版面板（320×260）从主进程里认出来、**摆在
+锚点下方**、三行读数与配置一致、内容放得下不裁；④ 在面板里拖字号 / 留白 / 行距，
+TXT 那一页**当场**变（26px、内边距归 0、行距 62.4px），且三条互不串动，文档高从
+726 万涨到 1286 万再到 1578 万像素。读数落 `spike/out/txt-typeset.json`。
+
+`live-app.js`、`book-tab.js`、`txt-big-opacity.js`、`rail-hit.js` 与 `txt-typeset.js`
+都要 `require` 真主进程，因此**两道隔离缺一不可**：
 `app.setPath('appData', TEMP)` **与** `app.setPath('userData', TEMP)`。只改 userData
 挡不住改名搬迁——`migrateLegacyUserData()` 读的是 `appData`。理由与现场见 Q68。
+
+**1.6.5 起 `preview.js` 也走同一套隔离**，虽然它不用 `require` 主进程（见 Q79）。
+这一支原先什么都没设，于是 Chromium 的 `Cache` / `GPUCache` 落在**用户当前那个应用**
+的目录里：一起来就抢锁（日志头部那串 `Unable to move the cache: 拒绝访问 (0x5)`），
+并发跑几支还互相抢，重的时候 GPU 进程崩掉、那一跑的表现是「截图拍出来是空的」而
+不是一句报错。现在它与另外五支共用 `probe-temp.cjs`，前缀 `zhituan-preview-`——
+因此**同一台机器上并发跑几支也行**（实测两支并发，一行 ERROR 都没有）。
 
 那份临时 userData 由 `spike/probe-temp.cjs` 建（`makeTempUserData`）：**开工前**先扫掉
 同前缀、早于 1 小时的旧目录。为什么不是「退出时自己删」——**Windows 上删不掉**（进程

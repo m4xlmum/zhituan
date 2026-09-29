@@ -234,8 +234,9 @@ function bootstrap(): void {
    * 滑块就跳回 100%。
    *
    * 同一处还要接第二条线：**已经开着的**本机文件（离线阅读的 TXT）拿不到广播——
-   * 它们不是自家页面，没有那座桥，正文的透明度只能由主进程往它们的视图里注入。
-   * 而这件事同样「写配置的路不止一条」，因此也挂在这里，与广播同一处。
+   * 它们不是自家页面，没有那座桥，正文的透明度与排版三项只能由主进程往它们的
+   * 视图里注入。而这件事同样「写配置的路不止一条」，因此也挂在这里，与广播同一处。
+   * 那两项合在 TabManager.refreshReaderView 里（对象、时机、判据完全一样）。
    *
    * 第三条线同理：媒体那两条规矩（收起时暂停 / 切走时暂停）改完也要当场重算，
    * 否则用户关了开关，后台那张还得等到下一次切标签才被放起来——见
@@ -243,7 +244,7 @@ function bootstrap(): void {
    */
   config.subscribe((next) => {
     broadcast(BROADCAST.configChanged, next)
-    tabs.refreshReaderOpacity()
+    tabs.refreshReaderView()
     tabs.refreshMediaState()
   })
 

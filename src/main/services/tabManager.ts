@@ -43,7 +43,7 @@ import type { TabsStatePayload } from '@shared/ipc'
 import type { OwnScreen, Rect, TabState } from '@shared/types'
 import { fileNameOf, isLocalEpub, isLocalFile, isLocalPdf, resolveInput } from '@shared/url'
 import { uaFor, type UaMode } from '@shared/ua'
-import { applyReaderOpacity, injectPageStyles } from './pageStyler'
+import { applyReaderOpacity, applyReaderTypeset, injectPageStyles } from './pageStyler'
 import { bookReaderUrl } from './bookReader'
 import { pdfReaderUrl } from './pdfReader'
 import { rendererUrl } from './rendererUrl'
@@ -164,6 +164,17 @@ export interface TabManagerDeps {
     ui: {
       /** 离线阅读正文的透明度：开着的本机文件要按它往自己的视图里注入 */
       readerOpacity: number
+      /**
+       * 离线阅读的排版三项（字号 / 行距 / 左右留白）。
+       *
+       * 与上面那一条同一个去处、同一个时机：本机 TXT 那一页是 Chromium 自己
+       * 排的，它的排版只能由主进程往那个 `pre` 上写（见 pageStyler 的
+       * applyReaderTypeset）。本机 EPUB 那一页不吃这三项——它自己从配置里读
+       * （book/BookApp.vue），所以那一条路不经过这里。
+       */
+      readerFontSize: number
+      readerLineHeight: number
+      readerMargin: number
     }
     /**
      * 媒体那两条规矩读的就是这里（见 applyMediaState）。
@@ -923,28 +934,52 @@ export class TabManager {
      * （kind 是 'pdf' / 'book'，上面那一步就返回了），它们那一条由页面自己落下
      * 去——淡的都是那张纸，不是字（见 pdf/PdfApp.vue 与 book/BookApp.vue）。
      * 同一个配置项、几条实现，因为那两页是我们画的、这一页是 Chromium 画的。
+     *
+     * 排版三项与它同一道闸：也是「只有本机文件吃」，也是只对 kind === 'guest'
+     * 这一种。本机 EPUB 那一页的字号由页面自己从同一份配置里读
+     * （book/BookApp.vue 的 applyTypeset），本机 PDF 那一页没有字号可调
+     * （字是画进画布的，要放大得改缩放）。
+     *
+     * 不是本机文件就**整个不碰**（早先写的是「透明度按 1 注入一遍」）。改掉它
+     * 是顺带修了一处错处：`applyReaderOpacity(wc, 1)` 走的是「删掉 documentElement
+     * 上那条行内 opacity」，而网页自己也可能往那儿写过东西——那一下会把它抹掉。
+     * 网页本来一条都不该收到我们的样式，所以这里干脆不发。
      */
-    const reader = isLocalFile(entry.url) ? cfg.ui.readerOpacity : 1
-    void applyReaderOpacity(entry.view.webContents, reader)
+    if (!isLocalFile(entry.url)) return
+    void applyReaderOpacity(entry.view.webContents, cfg.ui.readerOpacity)
+    void applyReaderTypeset(entry.view.webContents, {
+      fontSize: cfg.ui.readerFontSize,
+      lineHeight: cfg.ui.readerLineHeight,
+      margin: cfg.ui.readerMargin
+    })
   }
 
   /**
-   * 离线阅读透明度改了：把开着的本机文件**当场**重注入一遍。
+   * 离线阅读那几项改了：把开着的本机文件**当场**重注入一遍。
    *
-   * 不能等下一次导航。那是一条会被拖着走的滑块，用户盯着眼前这本 TXT 拖，
-   * 指望的就是它跟着淡；等下一次 reload 才生效等于这条滑块是坏的。
+   * 不能等下一次导航。那几条都是会被拖着走的滑块，用户盯着眼前这本 TXT 拖，
+   * 指望的就是它跟着淡、跟着变大；等下一次 reload 才生效等于它们是坏的。
    * 调用点挂在 index.ts 的配置订阅上（写配置的路不止一条，挂 store 才不漏）。
    *
-   * 不判「值变了没有」：写配置的路很多，而其中大多数与这一项无关，
-   * 每一次都对开着的本机文件重注入一遍样式表，代价是一次 IPC 往返乘以
-   * 本机文件的张数（一般就是一两张）；反过来判「变没变」要在这儿再存一份
-   * 影子状态，两处不同步时就是一条静默失效的滑块。
+   * 不判「值变了没有」：写配置的路很多，而其中大多数与这几项无关，
+   * 每一次都对开着的本机文件重注入一遍，代价是一次 IPC 往返乘以本机文件的
+   * 张数（一般就是一两张）；反过来判「变没变」要在这儿再存一份影子状态，
+   * 两处不同步时就是一条静默失效的滑块。
+   *
+   * 透明度与排版三项各是一条滑块、各改一处样式，但它们的对象、时机、判据
+   * 完全一样（都是「正在读的这一份本机文件」），因此合成一次刷新——分开两处
+   * 写等于把同一条判据抄两遍，那两条迟早会漏掉其中一条路。
    */
-  refreshReaderOpacity(): void {
-    const value = this.deps.getConfig().ui.readerOpacity
+  refreshReaderView(): void {
+    const ui = this.deps.getConfig().ui
     for (const entry of this.tabs.values()) {
       if (entry.kind !== 'guest' || !isLocalFile(entry.url)) continue
-      void applyReaderOpacity(entry.view.webContents, value)
+      void applyReaderOpacity(entry.view.webContents, ui.readerOpacity)
+      void applyReaderTypeset(entry.view.webContents, {
+        fontSize: ui.readerFontSize,
+        lineHeight: ui.readerLineHeight,
+        margin: ui.readerMargin
+      })
     }
   }
 

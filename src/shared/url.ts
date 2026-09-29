@@ -176,3 +176,28 @@ export function isLocalFile(url: string | null | undefined): boolean {
     return false
   }
 }
+
+/**
+ * 本机文本：`file:` 协议，**且不是 PDF**。
+ *
+ * 它回答的是「顶栏那枚『Aa』此刻管不管得着」——也就是「这一页的正文是不是
+ * 一份能改字号的东西」。管得着的有两种：
+ *
+ *   · **TXT 这一类**（Chromium 自己渲染的纯文本）：整篇文档就是个 `pre`，
+ *     字号行距都由 UA 样式表定，我们只能往那个 `pre` 上写样式
+ *     （见 services/pageStyler.ts 的 applyReaderTypeset）；
+ *   · **自家 EPUB 阅读页**：它从同一份配置里读那三项，右下角也长着一枚 Aa
+ *     （见 book/BookApp.vue）。这里把它一并算进来，是因为改的是同一个配置项，
+ *     从顶栏改和从书页里改结果一样——两处入口说的是同一件事，没必要在那儿
+ *     装作不管。
+ *
+ * PDF 不算：那一页的字是画进 canvas 的，没有字号可调，想放大得改缩放
+ * （它是另一条路，见 Rail.vue 那三格缩放）。
+ *
+ * 与 isLocalFile 分工不同：那个回答「界面上那条阅读透明度此刻管不管得着」
+ * （PDF 也算，淡的是那张纸）；这个回答「能不能改字」。两张判据因此差一个
+ * isLocalPdf。
+ */
+export function isLocalText(url: string | null | undefined): boolean {
+  return isLocalFile(url) && !isLocalPdf(url)
+}

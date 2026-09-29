@@ -206,7 +206,15 @@ export interface TabsStatePayload {
 }
 
 export interface OpenPopoverRequest {
-  kind: 'sites' | 'history' | 'bookmarks' | 'uaZoom' | 'tabs'
+  /**
+   * 面板种类。
+   *
+   * `typeset` 是离线阅读的排版三项（字号 / 行距 / 左右留白）。它与自家 EPUB
+   * 阅读页里那枚 Aa 打开的是同一组控件、写的是同一份配置，区别只在锚点：
+   * 书页那一枚长在页面自己的右下角，这一枚长在顶栏上——因为本机 TXT 那一页
+   * 是 Chromium 自己渲染的，页面上没有一处可以让我们挂控件。
+   */
+  kind: 'sites' | 'history' | 'bookmarks' | 'uaZoom' | 'tabs' | 'typeset'
   /** 锚点矩形（DIP，相对于摸鱼窗口的客户区），主进程据此摆放面板 */
   anchorRect: Rect
 }
