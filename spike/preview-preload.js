@@ -118,6 +118,13 @@ const config = {
     topBarOpen,
     railOpen: true,
     homeTheme: opts.theme,
+    /*
+     * 站点那一列怎么排（列表 / 小图标 / 图标）。真机上这个值从配置里来，
+     * 假桥必须给一个——缺了它那三个分支都会落到 undefined，
+     * 而 `view !== 'list'` 于是成立，探针看到的是一个**网格**的起始页，
+     * 而那不是默认档（默认是列表），也不是它以为自己在看的东西。
+     */
+    homeView: opts.homeView ?? 'list',
     backgroundOpacity: opts.bgAlpha ?? 1,
     readerOpacity: opts.readerAlpha ?? 1,
     ballIcon: opts.ballIcon,
@@ -146,12 +153,14 @@ const config = {
   lastSession: { openUrls: [], activeIndex: 0 }
 }
 
-/** 热门站点那张表，主进程打出来递进来的（只有弹出面板那一页非空） */
-const presets = opts.presets ?? []
+/**
+ * 起始页上被移除掉的站点域名。默认空着，`hidden.add` 会往里收
+ * （见下面那个桥——探针点完「移除」要看得见那一行真没了）。
+ */
+const HIDDEN = []
 
 /** 起始页的磁贴来自「自己固定的 → 常访问的 → 预置的」，三样都给一点 */
-const SITES = [  {
-    id: 's1',
+const SITES = [  {    id: 's1',
     title: '微信读书',
     url: 'https://weread.qq.com/',
     order: 0,
@@ -580,14 +589,33 @@ contextBridge.exposeInMainWorld('zhituan', {
     add: list,
     update: list,
     remove: list,
-    reorder: list,
-    /*
-     * 热门站点那张表由主进程打出来递进来（见 preview.js 的 presetSitesOf）。
-     * 原先这里回的是空数组，于是弹出面板的「热门站点」标题底下一条都没有
-     * ——真机上那张表是有内容的，假桥必须跟着走，否则看到的是一个
-     * 只存在于探针里的空面板。
-     */
-    presets: () => Promise.resolve(presets)
+    reorder: list
+  },
+  /*
+   * 被移除掉的站点域名（见 services/hiddenSiteStore.ts）。
+   *
+   * 假桥上它必须是**空**的：探针要看的是「真机上没删过任何东西时这一页长什么样」，
+   * 摆几条进去等于把用户删过的状态当成默认状态。`add` 真把域名收进来
+   * ——spike/home-sections.js 与 preview.js 那一跑点完「移除」之后要看得见
+   * 那一行真没了，写成空函数就永远看不出这一路通不通。
+   */
+  hidden: {
+    list: () => Promise.resolve(HIDDEN),
+    add: (input) => {
+      for (const domain of input?.domains ?? []) {
+        if (!HIDDEN.some((item) => item.domain === domain)) {
+          HIDDEN.push({ id: `h${HIDDEN.length + 1}`, domain, removedAt: 0 })
+        }
+      }
+      return Promise.resolve(HIDDEN)
+    },
+    remove: (input) => {
+      for (const domain of input?.domains ?? []) {
+        const at = HIDDEN.findIndex((item) => item.domain === domain)
+        if (at >= 0) HIDDEN.splice(at, 1)
+      }
+      return Promise.resolve(HIDDEN)
+    }
   },
   history: { list: () => Promise.resolve(HISTORY), clear: ok },
   bookmarks: { list: () => Promise.resolve(BOOKMARKS), remove: list, update: list },

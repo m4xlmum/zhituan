@@ -9,6 +9,7 @@ import type { BookmarkStore } from './services/bookmarkStore'
 import type { BossKeyService } from './services/bossKeyService'
 import type { ConfigStore } from './services/configStore'
 import type { HistoryStore } from './services/historyStore'
+import type { HiddenSiteStore } from './services/hiddenSiteStore'
 import type { ReadingStore } from './services/readingStore'
 import type { SiteStore } from './services/siteStore'
 import type { TabManager } from './services/tabManager'
@@ -22,6 +23,14 @@ export interface AppContext {
   config: ConfigStore
   registry: WindowRegistry
   sites: SiteStore
+  /**
+   * 起始页上被移除的站点域名。
+   *
+   * 「删除」这一件事落在它身上，而不是落在 sites 上：起始页那一列站点有三个来源
+   * （我的站点 / 常访问 / 热门站点），后两个删不掉——只能记住「这个域名别再出现」。
+   * 见 services/hiddenSiteStore.ts。
+   */
+  hidden: HiddenSiteStore
   history: HistoryStore
   bookmarks: BookmarkStore
   /** 本机 EPUB 读到哪儿了。按书的本机路径记，见 readingStore.ts */

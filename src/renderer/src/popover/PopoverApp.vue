@@ -1,6 +1,11 @@
 <script setup lang="ts">
 /**
- * 弹出面板。六种面板共用这一个组件，由 URL 的 ?kind= 决定内容。
+ * 弹出面板。五种面板共用这一个组件，由 URL 的 ?kind= 决定内容。
+ *
+ * 「站点」那一种在 1.6.7 去掉了：起始页自己就能添加、编辑、移除站点，
+ * 而那一栏的「站点」键是它唯一的人口——两份面板做同一件事，迟早有一处先改。
+ * 这一种一并删干净，而不是留着让它没人打得开（见 shared/ipc.ts 的
+ * OpenPopoverRequest.kind）。
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -14,16 +19,15 @@ import {
   READER_LINE_MAX,
   READER_LINE_MIN,
   READER_MARGIN_MAX,
-  READER_MARGIN_MIN,
-  sectionTitle
+  READER_MARGIN_MIN
 } from '@shared/constants'
-import type { Bookmark, HistoryEntry, PresetSite, SiteRecord, TabState } from '@shared/types'
+import type { Bookmark, HistoryEntry, TabState } from '@shared/types'
 import { useConfig } from '../composables/useConfig'
 import { useBackgroundAlpha } from '../composables/useBackgroundAlpha'
 
-type Kind = 'sites' | 'history' | 'bookmarks' | 'uaZoom' | 'tabs' | 'typeset'
+type Kind = 'history' | 'bookmarks' | 'uaZoom' | 'tabs' | 'typeset'
 
-const kind = (new URLSearchParams(location.search).get('kind') ?? 'sites') as Kind
+const kind = (new URLSearchParams(location.search).get('kind') ?? 'history') as Kind
 
 /**
  * 面板是另一扇窗、另一份文档，顶栏那棵树上写的 --zhituan-alpha 传不过来，
@@ -34,20 +38,16 @@ const { config } = useConfig()
 useBackgroundAlpha(config)
 // 面板不写主题：它属于「工具」那一层，固定用 :root 那一组（纸白），见 ChromeApp
 
-const mySites = ref<SiteRecord[]>([])
-const presets = ref<PresetSite[]>([])
 const history = ref<HistoryEntry[]>([])
 const bookmarks = ref<Bookmark[]>([])
 const tabList = ref<TabState[]>([])
 const query = ref('')
-const newSiteUrl = ref('')
 const activeTabId = ref<string | null>(null)
 const uaMode = ref<'desktop' | 'mobile'>('desktop')
 
 const title = computed(
   () =>
     ({
-      sites: '站点',
       history: '历史记录',
       bookmarks: '书签',
       uaZoom: '显示',
@@ -92,10 +92,7 @@ onUnmounted(() => {
 })
 
 async function refreshAll(): Promise<void> {
-  if (kind === 'sites') {
-    mySites.value = await window.zhituan.sites.list()
-    presets.value = await window.zhituan.sites.presets()
-  } else if (kind === 'history') {
+  if (kind === 'history') {
     history.value = await window.zhituan.history.list({ query: query.value, limit: 200 })
   } else if (kind === 'bookmarks') {
     bookmarks.value = await window.zhituan.bookmarks.list({ query: query.value })
@@ -123,18 +120,6 @@ function selectTab(tabId: string): void {
 function closeTab(tabId: string, event: MouseEvent): void {
   event.stopPropagation()
   void window.zhituan.tabs.close({ tabId })
-}
-
-async function addSite(): Promise<void> {
-  const url = newSiteUrl.value.trim()
-  if (!url) return
-  mySites.value = await window.zhituan.sites.add({ url })
-  newSiteUrl.value = ''
-}
-
-async function removeSite(id: string, event: MouseEvent): Promise<void> {
-  event.stopPropagation()
-  mySites.value = await window.zhituan.sites.remove({ id })
 }
 
 async function removeBookmark(id: string, event: MouseEvent): Promise<void> {
@@ -210,30 +195,8 @@ function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
     </header>
 
     <div class="body">
-      <!-- 站点 -->
-      <template v-if="kind === 'sites'">
-        <div class="add">
-          <input
-            v-model="newSiteUrl"
-            type="text"
-            placeholder="输入网址后回车添加"
-            @keydown.enter="addSite"
-          />
-        </div>
-        <div v-if="mySites.length" class="section">我的站点</div>
-        <div v-for="site in mySites" :key="site.id" class="row" @click="open(site.url)">
-          <span class="row-title">{{ site.title }}</span>
-          <button class="mini" title="移除" @click="removeSite(site.id, $event)">✕</button>
-        </div>
-        <div class="section">热门站点</div>
-        <div v-for="site in presets" :key="site.id" class="row" @click="open(site.url)">
-          <span class="row-title">{{ site.title }}</span>
-          <span class="tag">{{ sectionTitle(site.section) }}</span>
-        </div>
-      </template>
-
       <!-- 历史 -->
-      <template v-else-if="kind === 'history'">
+      <template v-if="kind === 'history'">
         <div v-if="!history.length" class="empty">暂无记录</div>
         <div v-for="item in history" :key="item.id" class="row" @click="open(item.url)">
           <span class="row-title">{{ item.title }}</span>
@@ -432,25 +395,6 @@ function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
 
 .mini:hover {
   color: var(--zhituan-danger);
-}
-
-.add {
-  padding: 4px 2px;
-}
-
-.add input {
-  width: 100%;
-  height: 26px;
-  padding: 0 8px;
-  background: rgba(0, 0, 0, 0.28);
-  border: 1px solid var(--zhituan-border);
-  border-radius: var(--zhituan-radius-sm);
-  color: var(--zhituan-text);
-  outline: none;
-}
-
-.add input:focus {
-  border-color: var(--zhituan-accent);
 }
 
 .segmented {

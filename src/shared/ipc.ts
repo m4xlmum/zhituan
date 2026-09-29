@@ -6,10 +6,10 @@
 import type {
   AppConfig,
   Bookmark,
+  HiddenSite,
   HistoryEntry,
   HotkeyInfo,
   OwnScreen,
-  PresetSite,
   Rect,
   ResizeEdge,
   SiteRecord,
@@ -31,7 +31,16 @@ export const INVOKE = {
   sitesUpdate: 'sites:update',
   sitesRemove: 'sites:remove',
   sitesReorder: 'sites:reorder',
-  presetsList: 'presets:list',
+  /**
+   * 起始页上被移除的站点域名。
+   *
+   * 「删除」在起始页上是**一条规矩、三个来源**：我的站点删的是记录，
+   * 常访问与热门站点没有记录可删，只能记下这个域名别再出现。这一组通道
+   * 就是那后半截，见 @shared/types 的 HiddenSite 与 services/hiddenSiteStore.ts。
+   */
+  hiddenList: 'hidden:list',
+  hiddenAdd: 'hidden:add',
+  hiddenRemove: 'hidden:remove',
 
   historyList: 'history:list',
   historyClear: 'history:clear',
@@ -213,8 +222,12 @@ export interface OpenPopoverRequest {
    * 阅读页里那枚 Aa 打开的是同一组控件、写的是同一份配置，区别只在锚点：
    * 书页那一枚长在页面自己的右下角，这一枚长在顶栏上——因为本机 TXT 那一页
    * 是 Chromium 自己渲染的，页面上没有一处可以让我们挂控件。
+   *
+   * **没有 `sites` 这一档**（1.6.7 起）：站点改在起始页那一屏上管了
+   * （增删改与视图切换都在那边），右栏那枚「站点」键与这块面板一并撤掉。
+   * 站点记录本身还在（services/siteStore.ts），只是不再从这里进出。
    */
-  kind: 'sites' | 'history' | 'bookmarks' | 'uaZoom' | 'tabs' | 'typeset'
+  kind: 'history' | 'bookmarks' | 'uaZoom' | 'tabs' | 'typeset'
   /** 锚点矩形（DIP，相对于摸鱼窗口的客户区），主进程据此摆放面板 */
   anchorRect: Rect
 }
@@ -253,7 +266,21 @@ export interface ZhituanApi {
     update(input: { id: string; patch: Partial<SiteRecord> }): Promise<SiteRecord[]>
     remove(input: { id: string }): Promise<SiteRecord[]>
     reorder(input: { ids: string[] }): Promise<SiteRecord[]>
-    presets(): Promise<PresetSite[]>
+  }
+  /**
+   * 起始页上被移除的站点域名。
+   *
+   * 只有「记下来」与「划掉」两个动作，没有「改」：这份名单里每一条的内容就是
+   * 一个域名，改它等于删一条再加一条。起始页那三个来源的删除因此共用这一组
+   * ——见 @shared/types 的 HiddenSite。
+   *
+   * 两边都收**一个数组**：起始页上「移除」这一下可能同时牵动两个域名
+   * （把一个站点的地址改成别家，旧域名也要一并消失），一次说清比来回两趟稳。
+   */
+  hidden: {
+    list(): Promise<HiddenSite[]>
+    add(input: { domains: string[] }): Promise<HiddenSite[]>
+    remove(input: { domains: string[] }): Promise<HiddenSite[]>
   }
   history: {
     list(input?: { query?: string; limit?: number; offset?: number }): Promise<HistoryEntry[]>

@@ -28,6 +28,9 @@
  *   npx electron spike/preview.js --home          # 起始页
  *   npx electron spike/preview.js --home --themes # 起始页三套主题各截一张（走真实换主题那条路）
  *   npx electron spike/preview.js --home --plate local   # 起始页停在「离线阅读」那一栏
+ *   npx electron spike/preview.js --home --view grid      # 排布换成小图标那一档（点真的那枚按钮）
+ *   npx electron spike/preview.js --home --view icons     # 图标那一档
+ *   # 上一行：--view 走的是真路（去点状态行那枚分段控件），终端上打 VIEW 那一行读数
  *   npx electron spike/preview.js --home --click-plate video  # 照完「全部」再点一下「视频」栏
  *   npx electron spike/preview.js --home --plate local --open-file 斗破苍穹.txt,三体（全集）.pdf
  *   # 上一行：点一下「打开文件…」，让对话框返回这两本，看那一圈走完之后是什么样
@@ -51,7 +54,7 @@
  *   npx electron spike/preview.js --notice 1.1.0 --notice-phase ready --theme night
  *   npx electron spike/preview.js --drag-probe     # 逐个位置按一下，问「这里按下去起的是拖动还是缩放」
  *   npx electron spike/preview.js --popover --bg 0.35   # 弹出面板也是另一份文档，同样要问一遍
- *   npx electron spike/preview.js --popover --kind tabs # 面板有六张，换一张看
+ *   npx electron spike/preview.js --popover --kind history # 面板有五张，换一张看
  *   npx electron spike/preview.js --popover --kind tabs --width 320 --height 360
  *   # 上一行：面板这份文档的 .panel 是 width/height:100%，**尺寸得自己传对**，
  *   #        否则面板被拉满整块视口、量出来的 panel 就是视口本身。
@@ -373,10 +376,24 @@ const DESKTOP = (() => {
  */
 const ALPHA = has('--alpha')
 
-/** 面板有五种，默认看「站点」那一张；--kind uaZoom 能换一张看 */
+/** 面板有五张，默认看「历史」那一张；--kind uaZoom 能换一张看 */
 const KIND = (() => {
   const i = args.indexOf('--kind')
-  return i >= 0 && args[i + 1] ? args[i + 1] : 'sites'
+  return i >= 0 && args[i + 1] ? args[i + 1] : 'history'
+})()
+
+/**
+ * --view <list|grid|icons>：起始页那一列站点按哪一档排。
+ *
+ * 这一档**走的是真路**：开窗之后去点状态行那枚分段控件（见下面 CLICK_VIEW 那一段），
+ * 而不是把配置摆好。值与界面之间隔着 pickView → config.patch → 广播 → 重算
+ * 列数这几步，摆出来的状态验不到那几步；而「换了档之后格子数、列数、一屏放得下
+ * 几格是不是跟着重算了」正是这一档唯一要看的东西。
+ */
+const VIEW = (() => {
+  const i = args.indexOf('--view')
+  const next = i >= 0 ? args[i + 1] : null
+  return next && !next.startsWith('--') ? next : null
 })()
 
 /**
@@ -507,12 +524,44 @@ const BALL_IMAGE_DATA = (() => {
 })()
 
 /**
- * 热门站点那张表，开窗前填好（见 presetSitesOf）。写在这里而不是 whenReady
- * 里面：下面是 `preview:options` 的应答，它在模块作用域里读这个变量，
- * 而 whenReady 里面那个作用域它看不见——写进去就是一条静默的 ReferenceError，
- * 应答整个不发，假桥拿不到任何选项。
+ * 站点那一列怎么排，以及「这一档的方格究竟排出来是什么样」。
+ *
+ * 读的是**算出来的那几个数**（--cols、每一格的实际方框、渲染了几格），
+ * 不是样式表里写了什么：这一页的列数与「一屏放得下几格」是由脚本按实测尺寸
+ * 算出来后写成变量的（见 StartPage 的 CELL / cols / limit），
+ * 量格子才是量到那笔账本身。
  */
-let PRESETS = []
+const VIEW_STATE = `(() => {
+  const root = document.querySelector('.page > .modern, .page > .term')
+  const lines = [...document.querySelectorAll('.lines .line')]
+  const first = lines[0] ? lines[0].getBoundingClientRect() : null
+  return {
+    档: root ? root.dataset.view : null,
+    选中: [...document.querySelectorAll('.status .views .view')]
+      .filter((el) => el.classList.contains('on'))
+      .map((el) => el.textContent.trim()),
+    列: root ? getComputedStyle(root).getPropertyValue('--cols').trim() : null,
+    格子: first
+      ? { w: Math.round(first.width), h: Math.round(first.height) }
+      : null,
+    排出来的格数: lines.length,
+    第一格的图标: (() => {
+      const icon = document.querySelector('.lines .line .favicon')
+      if (!icon) return null
+      const r = icon.getBoundingClientRect()
+      return { w: Math.round(r.width), h: Math.round(r.height) }
+    })()
+  }
+})()`
+
+const CLICK_VIEW = (id) =>
+  `(() => {
+    const el = [...document.querySelectorAll('.status .views .view')]
+      .find((b) => b.textContent.trim() === ${JSON.stringify(id)} || b.dataset.view === ${JSON.stringify(id)})
+    if (!el) return false
+    el.click()
+    return true
+  })()`
 
 ipcMain.on('preview:options', (event) => {
   event.returnValue = {
@@ -534,7 +583,13 @@ ipcMain.on('preview:options', (event) => {
     noticePercent: NOTICE_PERCENT,
     noticeMessage: NOTICE_MESSAGE,
     openFile: OPEN_FILE,
-    presets: PRESETS
+    /*
+     * 这里**不传 --view**：假桥自己给的默认档就是「列表」，于是开窗那一刻
+     * 起始页停在列表上，换档那一步由 `--view` 去点那枚真按钮来完成。
+     * 传下去的话「点之前」已经是目标那一档了，前后两串读数一模一样——
+     * 那不是「换档换成了」，只是「点了一下已经亮着的按钮，没坏」。
+     */
+    homeView: 'list'
   }
 })
 
@@ -1404,42 +1459,6 @@ async function bodyRectOf(width, height) {
   }
 }
 
-/**
- * 热门站点那一列（弹出面板的「热门站点」一节）。
- *
- * 真机上这条桥回的就是 `PRESET_SITES` 本身（`registerDataIpc.ts` 把那张表
- * 原样递出去），而假桥原先回的是空数组——于是面板里「热门站点」这个标题
- * 底下一条都没有，下半截空着。那不是设计成这样的留白，是假数据没给。
- *
- * 表从 presets.ts 打出来，不在这儿另抄一份：抄本会走样，而走样的方式恰好是
- * 「探针里那十几个站点名和产品里的对不上」，看图的看不出来。
- */
-async function presetSitesOf() {
-  const ROOT = path.join(__dirname, '..')
-  const outdir = fs.mkdtempSync(path.join(os.tmpdir(), 'zhituan-presets-'))
-  try {
-    await esbuild.build({
-      entryPoints: [path.join(ROOT, 'src', 'shared', 'presets.ts')],
-      bundle: true,
-      format: 'cjs',
-      platform: 'node',
-      outdir,
-      outbase: path.join(ROOT, 'src'),
-      outExtension: { '.js': '.cjs' },
-      alias: { '@shared': path.join(ROOT, 'src', 'shared') },
-      external: ['electron'],
-      logLevel: 'silent'
-    })
-    return require(path.join(outdir, 'shared', 'presets.cjs')).PRESET_SITES
-  } finally {
-    try {
-      fs.rmSync(outdir, { recursive: true, force: true })
-    } catch {
-      // 临时目录删不掉不影响结论
-    }
-  }
-}
-
 app.whenReady().then(async () => {
   /*
    * 真正开窗的那对尺寸。
@@ -1449,12 +1468,6 @@ app.whenReady().then(async () => {
    * 于是下面量出来的每一行、每一次换行，都是用户会看到的那一份。
    */
   const rect = BODY ? await bodyRectOf(WIDTH, HEIGHT) : null
-  /*
-   * 只有弹出面板会经假桥读这张表（起始页是直接 import 的），因此只在那一页
-   * 打一次包——每跑都打一次没必要，而这一跑是为了看图，不是量时间。
-   * 赋给的是模块级那个变量：`preview:options` 的应答在模块作用域里读它。
-   */
-  PRESETS = page === 'popover' ? await presetSitesOf() : []
   const viewW = rect ? rect.width : WIDTH
   const viewH = rect ? rect.height : HEIGHT
   if (rect) {
@@ -1483,8 +1496,8 @@ app.whenReady().then(async () => {
   })
 
   /*
-   * 面板是带 ?kind= 打开的（五种面板共用一份 popover.html），
-   * 不带参数时它自己是默认的「站点」那一张。
+   * 面板是带 ?kind= 打开的（五张面板共用一份 popover.html），
+   * 不带参数时它自己是默认的「历史记录」那一张。
    */
   await win.loadFile(pagePath, page === 'popover' ? { search: `?kind=${KIND}` } : undefined)
 
@@ -1828,6 +1841,13 @@ app.whenReady().then(async () => {
    * 不给 --plate 时一个字都不加——「全部」那一张就是默认那张图，重跑该盖掉旧的。
    */
   const plateTag = PLATE_TARGET ? `-plate${PLATE_TARGET}` : ''
+  /*
+   * 站点排布那一档也写进名字：三档各是一张图，跑第二轮时彼此不能覆盖。
+   * 不给 --view 时一个字都不加——「列表」是默认那一档，重跑该盖掉旧的。
+   * 缀的是命令行上那个 id（grid / icons），与 --plate 缀 video 是同一手：
+   * 图名要能与「哪一跑照出来的」对上号。
+   */
+  const viewTag = VIEW ? `-view${VIEW}` : ''
 
   /*
    * --drag-probe：先按一遍，再照第一张。
@@ -1893,6 +1913,29 @@ app.whenReady().then(async () => {
     }
   }
 
+  /*
+   * 站点排布那一档。
+   *
+   * 走的是真路：去点状态行那枚分段控件，而不是把配置摆好再开窗。值与界面之间
+   * 隔着 pickView → config.patch → 广播 → 重算列数那几步，摆状态验不到那几步，
+   * 而「换了档之后列数、格子数、一屏放得下几格是不是跟着重算了」正是这一档
+   * 唯一要看的东西——因此前后各量一遍，把两串数都打出来。
+   *
+   * 点不到就直接失败，不照那一张：把一张列表标成 grid 存下来，比什么都不存更坏
+   * （与 --plate 对名字那一手是同一个道理）。
+   */
+  if (page === 'home' && VIEW) {
+    console.log(`VIEW 点之前：${JSON.stringify(await run(VIEW_STATE))}`)
+    const hit = await run(CLICK_VIEW(VIEW))
+    if (!hit) {
+      console.log(`VIEW_BAD 状态行上没有「${VIEW}」那一档`)
+      app.exit(1)
+      return
+    }
+    await wait(400)
+    console.log(`VIEW 点之后：${JSON.stringify(await run(VIEW_STATE))}`)
+  }
+
   if (page === 'home' && has('--themes')) {
     /*
      * 展开主题选择器。
@@ -1927,7 +1970,7 @@ app.whenReady().then(async () => {
   } else {
     const name =
       page !== 'chrome'
-        ? `${page}${themeTag}${plateTag}${page === 'popover' ? `-${KIND}` : ''}${size}${tabs}${bg}${ball}${zoom}`
+        ? `${page}${themeTag}${plateTag}${viewTag}${page === 'popover' ? `-${KIND}` : ''}${size}${tabs}${bg}${ball}${zoom}`
         : `preview-${mode}${max}${themeTag}${noticeTag}${screenTag}${size}${tabs}${bg}${ball}${zoom}${reader}`
     await shoot(name)
 

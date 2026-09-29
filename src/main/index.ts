@@ -34,6 +34,7 @@ import { ReadingStore } from './services/readingStore'
 import { rendererUrl } from './services/rendererUrl'
 import { hardenWebContents, setupSession } from './services/sessionSetup'
 import { SiteStore } from './services/siteStore'
+import { HiddenSiteStore } from './services/hiddenSiteStore'
 import { TabManager } from './services/tabManager'
 import { TrayService } from './services/trayService'
 import { UpdateService } from './services/updateService'
@@ -121,6 +122,8 @@ function bootstrap(): void {
   const config = new ConfigStore(userDataDir)
   const registry = new WindowRegistry()
   const sites = new SiteStore(userDataDir)
+  // 起始页上被移除的域名。单独一份文件：它会越删越长，而配置一变就全量广播
+  const hidden = new HiddenSiteStore(userDataDir)
   const history = new HistoryStore(userDataDir)
   const bookmarks = new BookmarkStore(userDataDir)
   const reading = new ReadingStore(userDataDir)
@@ -296,7 +299,7 @@ function bootstrap(): void {
    * 退出看门狗：退出流程的最长时间预算。
    *
    * 正常路径是 app.quit() → before-quit 落盘 → will-quit 里 app.exit(0)，
-   * 毫秒级的事。但 before-quit 要同步写五份文件，其中任何一次被拖住，
+   * 毫秒级的事。但 before-quit 要同步写六份文件，其中任何一次被拖住，
    * 整条退出链就停在半路、进程迟迟不退——见 QUIT_WATCHDOG_MS 那段注释。
    *
    * 更新流程里这一步的代价最大：应用内「更新并重启」是先起安装程序、
@@ -358,6 +361,7 @@ function bootstrap(): void {
     config,
     registry,
     sites,
+    hidden,
     history,
     bookmarks,
     reading,
@@ -475,6 +479,8 @@ function bootstrap(): void {
     }))
     config.flush()
     sites.flush()
+    // 起始页上「移除站点」那一条也是去抖写入的，同样要走之前落盘
+    hidden.flush()
     history.flush()
     bookmarks.flush()
     // 阅读位置是去抖写入的：最后那一次翻页多半还没落盘，走之前把它写下去

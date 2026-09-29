@@ -2,7 +2,7 @@
 /**
  * 右侧功能栏。
  *
- * 站点、历史、书签、缩放、三条透明度滑块这些原本摊在底栏的功能都收在这里。
+ * 历史、书签、缩放、三条透明度滑块这些原本摊在底栏的功能都收在这里。
  * 横屏下纵向空间最贵，而底栏那条横带子要吃掉整个宽度；换成一条竖栏，
  * 代价只是正文窄了 48px。
  *
@@ -12,6 +12,10 @@
  * 栏底那格「设置」也搬走了——用户要它挪到界面左上角并换成图标，现在它与起始页
  * 那颗键并排待在顶栏最左（见 TopBar.vue）。于是这一栏不再有「固定在栏底、
  * 滚不掉」的那一格：整条栈都能滚，最下面一条滑块不会被谁挤掉。
+ *
+ * 「站点」那一格也去了（1.6.7）：起始页自己就能添加、编辑、移除站点，
+ * 那一格打开的面板做的正是同一件事——两处入口做同一件事，迟早会有一处先改。
+ * 那一格空出来的高度给了下面那两格暂停开关，见模板里那段注释。
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -120,7 +124,7 @@ function togglePauseOnCollapse(): void {
  * 「不能出声」，切走只是「不该在这儿播」——因此切走那一张只暂停、**不闭麦**。
  * 它不与上一格分开放：它们说的是同一件事（什么时候让网页停下来）的两个场合，
  * 一头一尾摆开等于让人去两处找，而这一栏本来就是嫌设置里不好找才长出来的。
- * 两格并排占一行，不为它多占一行——理由见模板里那段注释。
+ * 紧挨着排在上一格下面（1.6.7 之前是并排），高度账见模板里那段注释。
  */
 const pauseOnSwitch = computed(() => props.config?.stealth.pauseMediaOnSwitch ?? false)
 
@@ -148,36 +152,37 @@ function togglePauseOnSwitch(): void {
         最上面这两格是「开关」——全栏只有这两格按下去就地切一个状态，其余要么
         打开面板、要么是滑块，高亮即当前状态（.item.on）。
 
-        两格并排挤在**一行**里，而不是各自占一行：这一栏的高度是量着配的
-        （默认档 960×540 刚好放满、溢出 0px，见 .stack 那条注释），再多一行
-        就会把最底下那条滑块推到折叠线以下——而这条栏的立栏理由正是「横屏下
-        纵向空间最贵」。并排还顺带说明了它们的关系：同一件事（什么时候让网页
-        停下来）的两个场合。
+        上下排，一格一行，各自独占一格（1.6.7 之前这两格并排挤在一行里）。
+        顺序就是上面那格「收起时暂停」、下面那格「切走时暂停」，
+        与它们在系统设置里那一栏的顺序一致。
+
+        这一栏的高度是量着配的（默认档 960×540 刚好放满、溢出 0px，见 .stack 那条
+        注释），因此这一改**一格都没多占**：原先那 7 个格子里有一格是这两格合挤的
+        一行，现在少掉了「站点」那一格、多出来这两格，格子数前后都是 7，
+        366px 那一笔账一个数都不用改（见 --zhituan-rail-track）。
+
+        两格之间不留分隔线，紧挨着排：它们说的是同一件事（什么时候让网页停下来）的
+        两个场合，一头一尾摆开等于让人去两处找。
       -->
-      <div class="pair">
-        <button
-          class="item"
-          :class="{ on: pauseOnCollapse }"
-          :title="pauseHint"
-          @click="togglePauseOnCollapse"
-        >
-          <Icon name="pause" :size="14" />
-        </button>
-        <button
-          class="item"
-          :class="{ on: pauseOnSwitch }"
-          :title="switchHint"
-          @click="togglePauseOnSwitch"
-        >
-          <Icon name="stop" :size="14" />
-        </button>
-      </div>
+      <button
+        class="item"
+        :class="{ on: pauseOnCollapse }"
+        :title="pauseHint"
+        @click="togglePauseOnCollapse"
+      >
+        <Icon name="pause" :size="14" />
+      </button>
+      <button
+        class="item"
+        :class="{ on: pauseOnSwitch }"
+        :title="switchHint"
+        @click="togglePauseOnSwitch"
+      >
+        <Icon name="stop" :size="14" />
+      </button>
 
       <div class="sep" />
 
-      <button class="item" title="我的站点 / 热门站点" @click="openPopoverAt('sites', $event)">
-        站点
-      </button>
       <button class="item" title="历史记录" @click="openPopoverAt('history', $event)">历史</button>
       <button class="item" title="书签" @click="openPopoverAt('bookmarks', $event)">书签</button>
 
@@ -277,13 +282,14 @@ function togglePauseOnSwitch(): void {
    *
    * 那几个常数是怎么来的（全部是实测出来的固定开销）：
    *   52px  = 顶栏 44 + 本栏上下内边距 4×2；
-   *   227px = 栈里那 9 个固定高度的格子（26px 一个）与 3 条分隔线（1px 高
-   *           + 上下各 3px 外边距）＝203px，加上 13 个子项之间的 12 条 2px 缝
-   *           ＝24px；
+   *   227px = 栈里那 7 个固定高度的格子（26px 一个，含最上面那两格暂停开关）
+   *           与 3 条分隔线（1px 高 + 上下各 3px 外边距）＝203px，加上 13 个子项
+   *           之间的 12 条 2px 缝＝24px；
    *   87px  = 每个滑块自己那两行小字与内边距（12+1+12+1+2+1＝29px）乘三条。
    * 合计 366px，于是三条轨道一共能拿到「100vh − 366px」，每条再除以三。
    * 加了这几项、或改了格子的高度，这个数就要跟着改一次——它是量出来的，
-   * 不是推出来的。
+   * 不是推出来的。1.6.7 去掉「站点」那格、把并排的两格开关拆成两行，
+   * 格子数与子项数都没有变，因此这几个数一个都没动。
    */
   --zhituan-rail-track: clamp(30px, calc((100vh - 366px) / 3), 56px);
 }
@@ -334,25 +340,14 @@ function togglePauseOnSwitch(): void {
 }
 
 /*
- * 两格开关并排一行。
+ * 两格开关从并排改成上下排之后（1.6.7），它们就是两格普通的 .item——
+ * 各占一行、各 26px 高，不再需要 .pair 那一层壳（那一层当初的全部作用
+ * 是让两格在一行里平分宽度）。
  *
- * 这一栏的高度是量着配的（见 .stack 注释）：默认档 960×540 刚好放满，再加一行
- * 26+2px 就会把最底下那条滑块推到折叠线以下。两格因此共占原来那一格的位置
- * ——48px 的栏减去两侧 4px 内边距与 2px 间隙，每格 19px 宽，14px 的图标摆得下。
- * 不为这两格把栏加宽：栏宽一改，正文区、四档尺寸预设、各处的版面账都要跟着动。
+ * 于是高度账回到「数格子」这件事上：栈里的固定格子从 7 个还是 7 个
+ * （少掉「站点」，多出第二格开关），下面 --zhituan-rail-track 里那个 366px
+ * 一个数都不用动。
  */
-.pair {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 2px;
-}
-
-.pair > .item {
-  /* .item 是 width:100%（给独占一行的那几格用的），这里改由 flex 平分 */
-  width: auto;
-  flex: 1 1 0;
-  min-width: 0;
-}
 
 .item {
   flex: 0 0 auto;

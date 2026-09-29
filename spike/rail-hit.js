@@ -22,6 +22,11 @@
  *     所以它证明不了用户那一下），改用 `sendInputEvent` 派**真鼠标输入**，
  *     从拇指位置往下拖，然后读配置里那一项有没有变。
  *
+ * 1.6.7 又加了一条：**最上面那两格开关的形状**。它们从「并排挤在同一格里」改成
+ * 「上下各占一格」，位置动了就得重量一次——量三件事：两格是不是真的一个在一个下面
+ * （不是同一行里各占一半，判据是**与下面每一格同宽**）、中点是不是落在格内、
+ * 以及拿真鼠标按一下能不能改到**它自己**那一项（另一格不许跟着动）。
+ *
  * 跑法：npx electron --no-sandbox spike/rail-hit.js
  *      npx electron --no-sandbox spike/rail-hit.js --w 960 --h 540
  * 产出：终端一份读数、spike/out/rail-hit.json
@@ -142,6 +147,36 @@ const 量脚本 = `(() => {
       拇指中点y: r1(r.top + 7 + (1 - Number(el.value) / 100) * (r.height - 14))
     }
   })
+  // 最上面那两格开关（1.6.7 从「并排挤在一格里」改成上下各占一格）。
+  // 按**提示文字的开头**去认，不按图标也不按次序：次序是这一问要量的事，
+  // 拿它当尺子等于自己证明自己。命中则看按下去的那点是不是落在这一格**里面**
+  // （按钮里画着 svg，elementFromPoint 会还回 <path>，所以问的是 closest 归谁）。
+  const 开关 = ['收起时暂停播放', '切走时暂停播放'].map((头) => {
+    const btn = [...document.querySelectorAll('.rail .stack > .item')].find((e) =>
+      (e.title || '').startsWith(头)
+    )
+    if (!btn) return { 提示: 头, 缺: true }
+    const r = btn.getBoundingClientRect()
+    const cx = Math.round(r.left + r.width / 2)
+    const cy = Math.round(r.top + r.height / 2)
+    const e = document.elementFromPoint(cx, cy)
+    return {
+      提示: 头,
+      亮: btn.classList.contains('on'),
+      完整的提示: btn.title,
+      rect: rect(btn),
+      中点: { x: cx, y: cy },
+      中点归谁: e ? e.tagName + (e.getAttribute?.('class') ? '.' + e.getAttribute('class') : '') : '(null)',
+      中点落在这一格里: e ? e.closest('.item') === btn : false
+    }
+  })
+  // 拿下面一格普通的格子当尺子：两格开关若与它**同宽**，就说明是「各占一行」，
+  // 而不是「一行里各占一半」——后者两格加起来才等于一格宽。
+  const 参照格 = [...document.querySelectorAll('.rail .stack > .item')].find(
+    (e) => (e.title || '') === '历史记录'
+  )
+  const 参照 = 参照格 ? { 提示: '历史记录', rect: rect(参照格) } : null
+
   // 沿第三条的滑块矩形从上到下打一排点，看每一段归谁
   const 三 = 三条[2]
   const 命中 = []
@@ -177,6 +212,8 @@ const 量脚本 = `(() => {
       溢出: stack.scrollHeight - stack.clientHeight
     } : null,
     三条,
+    开关,
+    参照,
     命中,
     栏内
   }
@@ -241,7 +278,33 @@ async function main() {
     )
   }
 
-  // 命中的那条竖线：把「归谁」压成若干段，读起来才不像天书
+  // ---- 最上面那两格开关的形状 --------------------------------------------
+  const 开关 = 报告.右栏.开关 || []
+  const 参照 = 报告.右栏.参照
+  console.log(`\n================ 最上面那两格开关（1.6.7 改成上下排）================`)
+  console.log(`参照格    ${参照 ? `历史记录 ${JSON.stringify(参照.rect)}` : '(没找到)'}`)
+  for (const s of 开关) {
+    console.log(
+      s.缺
+        ? `  ${s.提示}  ✗ 这一格不在栏里`
+        : `  ${s.提示}  ${JSON.stringify(s.rect)}  亮=${s.亮}  中点(${s.中点.x},${s.中点.y})→${s.中点归谁}`
+    )
+  }
+  const 两格 = 开关.length === 2 && 开关.every((s) => !s.缺)
+  const 上下 = 两格 && 开关[1].rect.y >= 开关[0].rect.bottom
+  const 缝两格 = 两格 ? 开关[1].rect.y - 开关[0].rect.bottom : null
+  const 同宽 = !!(两格 && 参照) && 开关.every((s) => s.rect.w === 参照.rect.w)
+  const 同左 = !!(两格 && 参照) && 开关.every((s) => s.rect.x === 参照.rect.x)
+  const 中点都在格内 = 两格 && 开关.every((s) => s.中点落在这一格里)
+  console.log(
+    `形状      ${上下 ? '上下排' : '✗ 不是上下排'}  缝=${缝两格}px  ` +
+      `${同宽 ? '与下面每一格同宽' : '✗ 宽度与别的格不一样'}  ` +
+      `${同左 ? '左边界对齐' : '✗ 左边界不齐'}  ` +
+      `${中点都在格内 ? '两格中点都落在格内' : '✗ 有一格的中点落到了别处'}`
+  )
+  报告.开关形状 = { 上下, 缝两格, 同宽, 同左, 中点都在格内 }
+
+
   const 段 = []
   for (const p of 报告.右栏.命中) {
     const 末 = 段[段.length - 1]
@@ -328,6 +391,64 @@ async function main() {
   报告.逐段 = 逐段
   console.log(`\n沿第三条从上往下按下并拖 24px，逐段看滑块值：`)
   for (const s of 逐段) console.log(`  y 比例 ${s.比例}\ty=${String(s.y).padStart(4)}\t拖后值=${s.拖后el值}`)
+
+  // ---- 真按一下最上面那格开关 --------------------------------------------
+  /*
+   * 这两格换了地方（并排 → 上下），位置一换就得重量「还按得到吗」——合成 click
+   * 绕得过命中与裁剪（A12 那一族探针的毛病），这里照样派**真鼠标输入**。
+   *
+   * 一次按两格一起看：按的是上面那格，因此要的是**它自己那一项变、另一格不动**。
+   * 只量「有东西变了」是不够的——按错格也会变。
+   */
+  const 读两个开关 = () =>
+    chrome.webContents.executeJavaScript(
+      `Promise.all([window.zhituan.config.get()]).then(([c]) => ({
+        收起时暂停: c?.stealth?.muteMediaOnCollapse,
+        切走时暂停: c?.stealth?.pauseMediaOnSwitch
+      })).catch(() => '(读不到)')`
+    )
+  const 格态 = () =>
+    chrome.webContents.executeJavaScript(
+      `(() => {
+        const 取 = (头) => {
+          const b = [...document.querySelectorAll('.rail .stack > .item')].find((e) => (e.title || '').startsWith(头))
+          return b ? b.classList.contains('on') : '(缺)'
+        }
+        return { 收起时暂停: 取('收起时暂停播放'), 切走时暂停: 取('切走时暂停播放') }
+      })()`
+    )
+  const 第一格 = 开关[0]
+  const 按前配置 = await 读两个开关()
+  const 按前格态 = await 格态()
+  console.log(`\n================ 真按一下最上面那格开关（sendInputEvent）================`)
+  console.log(`按之前    配置=${JSON.stringify(按前配置)}  格上的高亮=${JSON.stringify(按前格态)}`)
+  if (第一格 && !第一格.缺) {
+    输入('mouseDown', 第一格.中点.x, 第一格.中点.y)
+    await delay(60)
+    输入('mouseUp', 第一格.中点.x, 第一格.中点.y)
+    await delay(600)
+  }
+  const 按后配置 = await 读两个开关()
+  const 按后格态 = await 格态()
+  const 按到了 =
+    第一格 && !第一格.缺 && typeof 按后配置 === 'object' && typeof 按前配置 === 'object'
+      ? 按后配置.收起时暂停 !== 按前配置.收起时暂停 && 按后配置.切走时暂停 === 按前配置.切走时暂停
+      : false
+  console.log(`按之后    配置=${JSON.stringify(按后配置)}  格上的高亮=${JSON.stringify(按后格态)}`)
+  console.log(
+    `结论      ${
+      按到了
+        ? '真鼠标按得到那一格，改的是它自己那一项、另一格没动'
+        : '✗ 按不到，或者按下去改的不是它自己那一项'
+    }`
+  )
+  报告.真按开关 = {
+    按前配置,
+    按后配置,
+    按前格态,
+    按后格态,
+    按到了
+  }
 
   fs.mkdirSync(OUT_DIR, { recursive: true })
   fs.writeFileSync(path.join(OUT_DIR, 'rail-hit.json'), JSON.stringify(报告, null, 2), 'utf8')

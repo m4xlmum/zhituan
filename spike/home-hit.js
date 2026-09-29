@@ -13,6 +13,12 @@
  *   npx electron spike/home-hit.js                     # 正文档区尺寸（960×540 的正文）
  *   npx electron spike/home-hit.js --width 1280 --height 720
  *   npx electron spike/home-hit.js --theme crt-green
+ *   npx electron spike/home-hit.js --view grid          # 也要在网格那两档下问一遍
+ *
+ * `--view` 是**直接把起始状态设成那一档**（假桥的 ui.homeView），不是在页面上
+ * 点出来——换档那一步的重新量算由 preview.js 的 --view 负责（它点的是真按钮）；
+ * 这里要问的是另一件事：网格那两档里，行尾那两枚按钮、状态行那三枚排布键
+ * 有没有被谁盖住。两档的 DOM 长得不一样，只量列表那一档是不够的。
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -30,6 +36,8 @@ const WIDTH = num('--width', 960)
 const HEIGHT = num('--height', 540)
 const themeIndex = args.indexOf('--theme')
 const THEME = themeIndex >= 0 ? args[themeIndex + 1] : null
+const viewIndex = args.indexOf('--view')
+const VIEW = viewIndex >= 0 ? args[viewIndex + 1] : 'list'
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -52,11 +60,17 @@ const PROBE = `(() => {
   }
 
   add('输入框', document.querySelector('.prompt .field input'))
+  add('添加', document.querySelector('.bar .add'))
   document.querySelectorAll('.plates .plate').forEach((el) => {
     add('栏目:' + (el.dataset.plate || '?'), el)
   })
   document.querySelectorAll('.lines .line').forEach((el, i) => {
     add('行' + i + ':' + ((el.querySelector('.label') || {}).textContent || '').trim().slice(0, 8), el)
+  })
+  // 状态行右端那三枚排布键：列表 / 小图标 / 图标。它们就在状态行里，
+  // 而状态行紧挨着「栏目线」与整片内容区的下沿——被谁盖住一点都不奇怪
+  document.querySelectorAll('.status .views .view').forEach((el) => {
+    add('排布:' + (el.dataset.view || '?'), el)
   })
   add('主题键', document.querySelector('.theme-menu .trigger'))
 
@@ -97,9 +111,49 @@ ipcMain.on('preview:options', (event) => {
     maximized: false,
     theme: THEME ?? 'paper',
     openFile: null,
-    presets: []
+    homeView: VIEW
   }
 })
+
+/**
+ * 行尾那两枚「编辑 / 移除」的命中测试。
+ *
+ * 它们平时是 display:none——鼠标停在那一行上才出现（起始页一行本来就窄，
+ * 常驻两枚按钮会把「地址」那一格挤没）。因此这一遍要先把指针真挪到那一行上
+ * （sendInputEvent 的 mouseMove 会走 Chromium 那一侧的命中测试，:hover 因此
+ * 是真的），再问这一刻「按钮上站着的是谁」。
+ *
+ * 这一问比前一遍更要紧：这两枚按钮**盖在行的右端**，而那底下正是 `.open`
+ * 那一整片可点区。要是 elementFromPoint 回来的是 `.open`，用户点「移除」时
+ * 开的就是这个站点——比点不到更糟。按钮按 data-act 认，不按文字：
+ * 文案随世界变（现代世界「编辑 / 移除」、终端世界 edit/del）。
+ */
+const HOVER_PROBE = `(() => {
+  const describe = (el) => {
+    if (!el) return null
+    const cls = typeof el.className === 'string' ? el.className.trim().split(/\\s+/).filter(Boolean) : []
+    return { tag: el.tagName.toLowerCase(), cls, text: (el.textContent || '').trim().slice(0, 12) }
+  }
+  const out = []
+  document.querySelectorAll('.lines .line').forEach((line, i) => {
+    line.querySelectorAll('.acts .act').forEach((el) => {
+      if (el.offsetParent === null) return
+      const r = el.getBoundingClientRect()
+      const x = Math.round(r.x + r.width / 2)
+      const y = Math.round(r.y + r.height / 2)
+      const hit = document.elementFromPoint(x, y)
+      out.push({
+        name: '行' + i + ':' + (el.dataset.act || '?'),
+        act: el.dataset.act || null,
+        box: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+        ok: hit === el || el.contains(hit),
+        hit: describe(hit),
+        stack: document.elementsFromPoint(x, y).slice(0, 4).map(describe)
+      })
+    })
+  })
+  return out
+})()`
 
 app.whenReady().then(async () => {
   const win = new BrowserWindow({
@@ -120,7 +174,16 @@ app.whenReady().then(async () => {
   await wait(1200)
 
   if (THEME) {
-    // 走真实那条路换皮：点开菜单点一项（与 preview.js 的 --themes 同一手）
+    /*
+     * 换皮这一步其实**已经**由假桥做完了（上面 `preview:options` 里那个 theme），
+     * 这里点菜单只是为了量一条真实路径：点得动、点完页面上真换了。
+     *
+     * 认 id 要取 `.chips` 那个子元素上的 `data-theme`——它挂在里面那一层色块上，
+     * 不在 `.item` 自己身上。早先这里读的是 `el.dataset.theme`，读不到就退成
+     * textContent，而那三行写的是说明文字（「磷绿P1 单色终端：……」），
+     * 于是 `--theme crt-green` 永远匹配不上、每次都打印一行看着像故障的
+     * `THEME_BAD`——探针自己认错了人，不是页面少了那套皮。
+     */
     const openMenu = `(() => {
       const trigger = document.querySelector('.theme-menu .trigger')
       if (trigger && trigger.getAttribute('aria-expanded') !== 'true') trigger.click()
@@ -128,9 +191,17 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(openMenu)
     await wait(300)
     const ids = await win.webContents.executeJavaScript(
-      `[...document.querySelectorAll('.theme-menu .panel .item')].map((el) => el.dataset.theme || el.textContent.trim())`
+      `[...document.querySelectorAll('.theme-menu .panel .item')].map(
+        (el) => el.querySelector('.chips')?.dataset.theme || ''
+      )`
     )
-    console.log(`THEMES ${JSON.stringify(ids)}`)
+    console.log(
+      `THEMES ${JSON.stringify(ids)}（标记为当前的是第 ${
+        (await win.webContents.executeJavaScript(
+          `[...document.querySelectorAll('.theme-menu .panel .item')].findIndex((el) => el.classList.contains('on'))`
+        )) + 1
+      } 项，桥给的档是 ${THEME}）`
+    )
     const at = ids.indexOf(THEME)
     if (at >= 0) {
       await win.webContents.executeJavaScript(
@@ -209,6 +280,49 @@ app.whenReady().then(async () => {
     await press(rowAt.x, rowAt.y)
     const state = await win.webContents.executeJavaScript(`JSON.stringify(window.__clicks)`)
     console.log(`PRESS 行 @${rowAt.x},${rowAt.y} → ${state}`)
+  }
+
+  // ---- 行尾那两枚按钮：先把指针挪上那一行，再问谁站在它们上面
+  const hoverRow = results.find((r) => r.name.startsWith('行3')) ?? results.find((r) => r.name.startsWith('行'))
+  let acts = []
+  if (hoverRow) {
+    const hx = hoverRow.box.x + hoverRow.box.w - 26
+    const hy = hoverRow.box.y + Math.round(hoverRow.box.h / 2)
+    win.webContents.sendInputEvent({ type: 'mouseMove', x: hx, y: hy })
+    await wait(250)
+    acts = await win.webContents.executeJavaScript(HOVER_PROBE)
+    for (const a of acts) {
+      const mark = a.ok ? '✓' : '✗'
+      const hit = a.hit ? `${a.hit.tag}.${a.hit.cls.join('.')}` : 'null'
+      console.log(`ACT ${mark} ${a.name} @${a.box.x},${a.box.y} ${a.box.w}×${a.box.h} → ${hit}`)
+      if (!a.ok) {
+        console.log(
+          `    叠着：${a.stack.map((s) => (s ? `${s.tag}.${s.cls.join('.')}` : 'null')).join(' / ')}`
+        )
+      }
+    }
+    console.log(`ACT_N ${acts.length}`)
+    console.log(`ACT_BAD ${JSON.stringify(acts.filter((a) => !a.ok).map((a) => a.name))}`)
+  }
+
+  /*
+   * 真按一下「编辑」。
+   *
+   * 命中测试说了那一点上站着谁，但没说按下去界面接不接得住——尤其这一枚：
+   * 按错了开的是这个站点（`pick` 与 `editRow` 就在同一行的两个按钮上）。
+   * 按完看两件事：编辑器开没开、这一下有没有**同时**把这个站点打开。
+   */
+  const editAct = acts.find((a) => a.ok && a.act === 'edit')
+  if (editAct) {
+    await win.webContents.executeJavaScript('window.__clicks = []')
+    const ex = editAct.box.x + Math.round(editAct.box.w / 2)
+    const ey = editAct.box.y + Math.round(editAct.box.h / 2)
+    await press(ex, ey)
+    const state = await win.webContents.executeJavaScript(`JSON.stringify({
+      编辑器: document.querySelector('.site-editor .head')?.textContent.trim().replace(/\\s+/g, ' ') ?? null,
+      点到的: window.__clicks
+    })`)
+    console.log(`PRESS 编辑 @${ex},${ey} → ${state}`)
   }
 
   console.log(`HIT_DONE`)

@@ -42,6 +42,14 @@ export interface HomeRow {
    * 落到首字母那一格上就和一列网站长得一模一样了。
    */
   local?: boolean
+  /**
+   * 这一行对应的站点条目，**有它这一行才编辑得了、删得掉**。
+   *
+   * 「继续上次」与本机文件那几行没有它：前者说的是「回上次那个地方」，
+   * 删掉它并不等于那个站点没了（它只是最近读的那一条）；后者根本不是站点。
+   * 页面据此决定这一行要不要露出那两枚按键，判据只有这一格。
+   */
+  tile?: HomeTile
   /** 过滤用的一整串，省得每次比较都现拼 */
   haystack: string
 }
@@ -83,6 +91,8 @@ export function rowsOf(tiles: HomeTile[], lastRead: HistoryEntry | null): HomeRo
       host: tile.domain,
       url: tile.url,
       icon: tile.icon,
+      // 编辑与删除都落在这一格上（见 HomeRow.tile）：站点行有它，其余行没有
+      tile,
       haystack: `${tile.name} ${tile.domain} ${tile.url}`.toLowerCase()
     })
   }
@@ -226,11 +236,16 @@ export interface RowListHandlers {
  * 行列表的交互：一屏显示几行、选中哪一行、上下键与回车。
  *
  * `limit` 由调用方按各自的行高与实测高度算出来——只有世界自己知道它的行有多高。
+ *
+ * `step` 是上下键一步走几格：**列表里是 1，网格里是一整行**（也就是列数）。
+ * 屏幕上就是把光标往上/下挪一格位置，这一条不许写死成 1，否则网格里按一下
+ * 下键会从第一格跳到第二格——那是「往右一格」，不是「下一行」。
  */
 export function useRowList(
   rows: ComputedRef<HomeRow[]>,
   limit: ComputedRef<number>,
-  handlers: RowListHandlers
+  handlers: RowListHandlers,
+  step: ComputedRef<number> = computed(() => 1)
 ) {
   const visible = computed(() => rows.value.slice(0, Math.max(1, limit.value)))
   const sel = ref(0)
@@ -241,6 +256,9 @@ export function useRowList(
       sel.value = Math.max(0, visible.value.length - 1)
     }
   })
+
+  /** 网格里左右键走一格。列表里它到不了这儿——那时左右键是换板块或移动插入点 */
+  const grid = computed(() => step.value > 1)
 
   function move(delta: number): void {
     const last = Math.max(0, visible.value.length - 1)
@@ -261,10 +279,16 @@ export function useRowList(
   function onKeydown(event: KeyboardEvent): void {
     if (event.key === 'ArrowDown') {
       event.preventDefault()
-      move(1)
+      move(step.value)
     } else if (event.key === 'ArrowUp') {
       event.preventDefault()
+      move(-step.value)
+    } else if (grid.value && event.key === 'ArrowLeft') {
+      event.preventDefault()
       move(-1)
+    } else if (grid.value && event.key === 'ArrowRight') {
+      event.preventDefault()
+      move(1)
     } else if (event.key === 'Escape') {
       handlers.clearQuery()
       sel.value = 0

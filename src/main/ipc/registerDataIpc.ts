@@ -7,7 +7,6 @@ import { ipcMain } from 'electron'
 import { BROADCAST, INVOKE } from '@shared/ipc'
 import type { ConfigPatch } from '@shared/ipc'
 import { CUSTOM_BALL_ICON, DEFAULT_BALL_ICON } from '@shared/constants'
-import { PRESET_SITES } from '@shared/presets'
 import type { AppContext } from '../context'
 
 export function registerDataIpc(ctx: AppContext): void {
@@ -74,7 +73,21 @@ export function registerDataIpc(ctx: AppContext): void {
   )
   ipcMain.handle(INVOKE.sitesRemove, (_e, input: { id: string }) => ctx.sites.remove(input.id))
   ipcMain.handle(INVOKE.sitesReorder, (_e, input: { ids: string[] }) => ctx.sites.reorder(input.ids))
-  ipcMain.handle(INVOKE.presetsList, () => PRESET_SITES)
+
+  /*
+   * 起始页上被移除的站点域名（见 @shared/types 的 HiddenSite）。
+   *
+   * 与 sites 那几条摆在一起，因为它们说的是同一件事的两半：起始页上「删除这一行」
+   * 落在哪一半上，取决于这一行是从哪儿来的——我的站点删记录，常访问与热门站点
+   * 只能记域名。两半都在这一处，读的人一眼看得出「删除」不是一条路。
+   */
+  ipcMain.handle(INVOKE.hiddenList, () => ctx.hidden.list())
+  ipcMain.handle(INVOKE.hiddenAdd, (_e, input: { domains: string[] }) =>
+    ctx.hidden.hide(input?.domains ?? [])
+  )
+  ipcMain.handle(INVOKE.hiddenRemove, (_e, input: { domains: string[] }) =>
+    ctx.hidden.unhide(input?.domains ?? [])
+  )
 
   // ---------------------------------------------------------------- 历史
   ipcMain.handle(INVOKE.historyList, (_e, input?: { query?: string; limit?: number; offset?: number }) =>

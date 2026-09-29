@@ -14,6 +14,11 @@
  *      路径的那些就地改回来。
  *   3. **一栏里该有谁**。「全部」含所有栏的站点且按域名去重；单栏只含本栏；
  *      「离线阅读」的头一行永远是那个动作（打开文件…），它不是一本书。
+ *   4. **删要删干净、改要改对地方**。这一页那一列站点的来源有三个，而界面上
+ *      「删除」只有一下：删过的域名进名单，三个来源**一并**照它过滤——只挡住
+ *      历史那一条就是没删干净，同一行还在原地。而「改一行」在数据上其实是把
+ *      它**收成一条自己的站点**（常访问与热门站点都没有记录可改），换域名时
+ *      旧域名还要一并记进名单，否则它会顺着历史顶回来（Q11~Q13）。
  *
  * 因此这里不摆样子，验的是**真跑在界面里的那几份代码**：esbuild 把 presets.ts /
  * url.ts / useTiles.ts / historyStore.ts / registerFileIpc.ts 各打成一包再 require
@@ -64,6 +69,7 @@ async function buildModules() {
       path.join(ROOT, 'src', 'shared', 'url.ts'),
       path.join(ROOT, 'src', 'renderer', 'src', 'home', 'useTiles.ts'),
       path.join(ROOT, 'src', 'main', 'services', 'historyStore.ts'),
+      path.join(ROOT, 'src', 'main', 'services', 'hiddenSiteStore.ts'),
       path.join(ROOT, 'src', 'main', 'ipc', 'registerFileIpc.ts')
     ],
     bundle: true,
@@ -85,6 +91,7 @@ async function buildModules() {
     url: require(at('shared', 'url.cjs')),
     tiles: require(at('renderer', 'src', 'home', 'useTiles.cjs')),
     history: require(at('main', 'services', 'historyStore.cjs')),
+    hidden: require(at('main', 'services', 'hiddenSiteStore.cjs')),
     files: require(at('main', 'ipc', 'registerFileIpc.cjs'))
   }
 }
@@ -199,8 +206,9 @@ app.whenReady().then(async () => {
     const M = await buildModules()
     const { PRESET_SITES, sectionOfUrl } = M.presets
     const { fileNameOf } = M.url
-    const { tilesOf, plateRowsOf, statOf } = M.tiles
+    const { tilesOf, plateRowsOf, statOf, planOfSave, planOfRemove, domainOf } = M.tiles
     const { HistoryStore } = M.history
+    const { HiddenSiteStore } = M.hidden
     const { openLocalFiles } = M.files
 
     // --------------------------------------------------------------- Q0 前提
@@ -210,7 +218,9 @@ app.whenReady().then(async () => {
       归栏函数: typeof sectionOfUrl,
       取文件名: typeof fileNameOf,
       编排函数: [typeof tilesOf, typeof plateRowsOf, typeof statOf],
+      增删改: [typeof planOfSave, typeof planOfRemove],
       历史存储: typeof HistoryStore,
+      移除名单存储: typeof HiddenSiteStore,
       打开文件: typeof openLocalFiles
     }
     const ok0 =
@@ -218,9 +228,11 @@ app.whenReady().then(async () => {
       shape.归栏函数 === 'function' &&
       shape.取文件名 === 'function' &&
       shape.编排函数.every((t) => t === 'function') &&
+      shape.增删改.every((t) => t === 'function') &&
       shape.历史存储 === 'function' &&
+      shape.移除名单存储 === 'function' &&
       shape.打开文件 === 'function'
-    record('Q0', '前提：五份被测模块都装起来了，形状对得上', ok0 ? '是' : '否', shape)
+    record('Q0', '前提：六份被测模块都装起来了，形状对得上', ok0 ? '是' : '否', shape)
     if (!ok0) {
       finish(1)
       return
@@ -375,7 +387,11 @@ app.whenReady().then(async () => {
 
     // -------------------------------------------------------- Q6 站点编排
     step('把假数据喂给真的 tilesOf / plateRowsOf，看「全部」里有什么')
-    const tiles = tilesOf(MY_SITES, HISTORY, BOOKMARKS)
+    /*
+     * 没删过任何东西时那份名单是空的。这一跑先量**干净**的那一页
+     * （Q6~Q10 全是这个前提），「删过之后长什么样」另开 Q11。
+     */
+    const tiles = tilesOf(MY_SITES, HISTORY, BOOKMARKS, [])
     const domains = tiles.map((t) => t.domain)
     const dupes = domains.filter((d, i) => domains.indexOf(d) !== i)
     const allRows = plateRowsOf(tiles, HISTORY, HISTORY[0], 'all')
@@ -538,6 +554,148 @@ app.whenReady().then(async () => {
         取消那一次: afterCancel
       }
     )
+
+    // ------------------------------------------------ Q11 移除掉的站点不再出现
+    step('往名单里放两个域名（各来自一个来源），三个来源都该照它过滤')
+    /*
+     * 两个域名是**故意各挑一个来源**的：zhihu.com 只来自历史（常访问），
+     * 我的博客那个只来自「我的站点」。界面上那一按不分来源，于是过滤也不能分
+     * ——只挡住历史那一条就等于没删，用户删的是**那一行**。
+     * 再挑一个只来自预置表的域名问一遍：那一份也归同一条闸管。
+     *
+     * 名单里的写法照抄那一行自己的 `domain`，不手写域名字符串：起始页上那一行
+     * 的键是**注册域**（我的博客那一行的键是 example.org，不是 myblog.example.org），
+     * 手写一份就等于在探针里另立一把尺子——那正是这一问要防的事。
+     */
+    const presetTile = tiles.find(
+      (t) => t.siteId === null && !HISTORY.some((h) => domainOf(h.url) === t.domain)
+    )
+    const goneDomains = [zhihuTile.domain, blogTile.domain]
+    const afterHidden = tilesOf(MY_SITES, HISTORY, BOOKMARKS, goneDomains)
+    const afterPreset = tilesOf(MY_SITES, HISTORY, BOOKMARKS, [presetTile?.domain])
+    const afterUnknown = tilesOf(MY_SITES, HISTORY, BOOKMARKS, ['nobody-here.invalid'])
+    const surviving = afterHidden.filter((t) => goneDomains.includes(t.domain)).map((t) => t.domain)
+    const ok11 =
+      afterHidden.length === tiles.length - 2 &&
+      surviving.length === 0 &&
+      afterPreset.length === tiles.length - 1 &&
+      presetTile !== undefined &&
+      !afterPreset.some((t) => t.domain === presetTile.domain) &&
+      // 名单里放一个谁也不是的域名，一行都不该少——多删一格是最坏的一种「删」
+      afterUnknown.length === tiles.length
+    record('Q11', '被移除的域名从各个来源一并消失（历史 / 我的站点 / 预置），不相干的域名不误伤', ok11 ? '是' : '否', {
+      移除前: tiles.length,
+      移掉两个域名的写法: goneDomains,
+      移掉两个域名之后: { 剩: afterHidden.length, 该走没走的: surviving },
+      只来自预置表的那一个: { 域名: presetTile?.domain, 之后剩: afterPreset.length },
+      名单里放了个不相干的: afterUnknown.length
+    })
+
+    // --------------------------------------------------- Q12 增删改的落点
+    step('编辑器里那一按、行尾那一下，各要落成哪几件事')
+    const mineTile = tiles.find((t) => t.siteId !== null)
+    const addPlan = planOfSave(null, { title: '   ', url: 'bilibili.com' }, [])
+    const renamePlan = planOfSave(mineTile, { title: '哔哩哔哩', url: mineTile.url }, [])
+    const movePlan = planOfSave(zhihuTile, { title: '豆瓣', url: 'https://www.douban.com/' }, [])
+    const backPlan = planOfSave(null, { title: 'B 站', url: 'https://bilibili.com/' }, ['bilibili.com'])
+    const blankPlan = planOfSave(null, { title: '空的', url: '   ' }, [])
+    const badPlan = planOfSave(null, { title: '坏的', url: 'https://' }, [])
+    const removeMine = planOfRemove(mineTile)
+    const removeDerived = planOfRemove(zhihuTile)
+    const ok12 =
+      // 新增：名称留空就用域名（那一格是给眼睛看的），缺的协议头补上
+      addPlan?.save.id === null &&
+      addPlan.save.title === 'bilibili.com' &&
+      addPlan.save.url === 'https://bilibili.com' &&
+      addPlan.hide.length === 0 &&
+      addPlan.unhide.length === 0 &&
+      // 改自家那一行：改的是原来那条记录，域名没动，不该顺手把谁拉黑
+      renamePlan?.save.id === mineTile.siteId &&
+      renamePlan.save.title === '哔哩哔哩' &&
+      renamePlan.hide.length === 0 &&
+      // 改一行别人的：数据上收成一条新的自己的站点，旧域名要一并消失
+      movePlan?.save.id === null &&
+      movePlan.save.url === 'https://www.douban.com/' &&
+      movePlan.hide.length === 1 &&
+      movePlan.hide[0] === zhihuTile.domain &&
+      // 添一个删过的：从名单里划掉
+      backPlan?.unhide.length === 1 &&
+      backPlan.unhide[0] === 'bilibili.com' &&
+      // 空着 / 认不出域名：什么都不写（存下去也永远显示不出来）
+      blankPlan === null &&
+      badPlan === null &&
+      // 移除：域名进名单，是自家那条记录也一并删
+      removeMine.removeId === mineTile.siteId &&
+      removeMine.hide[0] === mineTile.domain &&
+      removeDerived.removeId === null &&
+      removeDerived.hide[0] === zhihuTile.domain
+    record('Q12', '保存落成「新增一条 / 改自家那条 / 收成新的并拉黑旧域名 / 划掉名单」，空与坏输入什么都不写', ok12 ? '是' : '否', {
+      新增: addPlan,
+      改自家的: renamePlan,
+      改别人的行: movePlan,
+      把删过的添回来: backPlan,
+      空输入: blankPlan,
+      认不出域名: badPlan,
+      移除自家的: removeMine,
+      移除别人的: removeDerived
+    })
+
+    // ------------------------------------------------- Q13 移除名单那份存储
+    step('真的 HiddenSiteStore（临时目录）：同一站点的两条网址收成一个域名、重复移除不叠账')
+    /*
+     * 这一份是**按域名**记的，而调用方手上有什么就报什么：界面报的是 tiles 里
+     * 那一行的域名，但「添回来」那条路会带上用户敲的整条网址（`https://…/x`）。
+     * 两处必须收成同一个域名——一边记 qq.com、另一边拿 weread.qq.com 去比，
+     * 一条也中不了，删了等于没删（见 @shared/url 的 domainOf）。
+     */
+    const hiddenDir = tempDir('hidden')
+    const hidden = new HiddenSiteStore(hiddenDir)
+    hidden.hide(['https://weread.qq.com/book/1', 'weread.qq.com/'])
+    const hidFirst = hidden.domains()
+    hidden.hide(['https://www.qq.com/yet-another'])
+    const hidAgain = hidden.domains()
+    /*
+     * 判据是「认不认得出域名」，不是「这个域名存不存在」：`nobody-here.invalid`
+     * 语法上是一个合法主机，因此它被收下——名单里躺着一条没人访问的域名不花什么，
+     * 而从这里去查一个域名存不存在是另一件事（要发网）。收不下的是连主机都拼不
+     * 出来的那两种写法（空的、光一个 `https://`），它们不该在名单里留一行空账。
+     */
+    hidden.hide(['nobody-here.invalid'])
+    const hidRealish = hidden.domains()
+    hidden.hide(['', '   ', 'https://'])
+    const hidUnparsable = hidden.domains()
+    hidden.unhide(['https://weread.qq.com/', 'nobody-here.invalid'])
+    const hidAfterUnhide = hidden.domains()
+    hidden.flush()
+    let hiddenOnDisk = null
+    try {
+      hiddenOnDisk = JSON.parse(
+        fs.readFileSync(path.join(hiddenDir, 'home-hidden.json'), 'utf8')
+      ).map((h) => h.domain)
+    } catch (err) {
+      hiddenOnDisk = `读不出来：${err}`
+    }
+    // 重新开一份读同一个目录：这份名单是要跨启动的，只活在内存里等于没删
+    const hiddenReread = new HiddenSiteStore(hiddenDir).domains()
+    const ok13 =
+      hidFirst.length === 1 &&
+      hidFirst[0] === 'qq.com' &&
+      hidAgain.length === 1 &&
+      hidRealish.length === 2 &&
+      // 拼不出主机的写法一律不记：名单里每一行都得是一把能用的尺子
+      hidUnparsable.length === 2 &&
+      hidAfterUnhide.length === 0 &&
+      hiddenOnDisk.length === 0 &&
+      hiddenReread.length === 0
+    record('Q13', '被移除名单按域名去重、重复移除不叠账，拼不出主机的写法不记，划掉之后盘上也没了，重开还是这个结果', ok13 ? '是' : '否', {
+      同一站点的两条网址: hidFirst,
+      又移了同一家的另一个子域: hidAgain,
+      语法合法但没人访问的域名: hidRealish,
+      拼不出主机的那三种写法: hidUnparsable,
+      划掉之后: hidAfterUnhide,
+      盘上的那一份: hiddenOnDisk,
+      重新打开读到: hiddenReread
+    })
 
     finish(results.some((r) => r.verdict !== '是') ? 1 : 0)
   } catch (err) {

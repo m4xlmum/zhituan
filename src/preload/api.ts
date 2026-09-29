@@ -17,9 +17,9 @@ import type {
 import type {
   AppConfig,
   Bookmark,
+  HiddenSite,
   HistoryEntry,
   HotkeyInfo,
-  PresetSite,
   SiteRecord,
   UpdateState,
   WindowRuntime
@@ -53,8 +53,14 @@ export const api: ZhituanApi = {
     add: (input) => ipcRenderer.invoke(INVOKE.sitesAdd, input) as Promise<SiteRecord[]>,
     update: (input) => ipcRenderer.invoke(INVOKE.sitesUpdate, input) as Promise<SiteRecord[]>,
     remove: (input) => ipcRenderer.invoke(INVOKE.sitesRemove, input) as Promise<SiteRecord[]>,
-    reorder: (input) => ipcRenderer.invoke(INVOKE.sitesReorder, input) as Promise<SiteRecord[]>,
-    presets: () => ipcRenderer.invoke(INVOKE.presetsList) as Promise<PresetSite[]>
+    reorder: (input) => ipcRenderer.invoke(INVOKE.sitesReorder, input) as Promise<SiteRecord[]>
+  },
+
+  // 起始页「移除站点」留下的域名名单。常访问与热门站点没有记录可删，删的就是它
+  hidden: {
+    list: () => ipcRenderer.invoke(INVOKE.hiddenList) as Promise<HiddenSite[]>,
+    add: (input) => ipcRenderer.invoke(INVOKE.hiddenAdd, input) as Promise<HiddenSite[]>,
+    remove: (input) => ipcRenderer.invoke(INVOKE.hiddenRemove, input) as Promise<HiddenSite[]>
   },
 
   history: {

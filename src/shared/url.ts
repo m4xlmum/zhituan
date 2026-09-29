@@ -94,6 +94,45 @@ export function sameSite(a: string, b: string): boolean {
 }
 
 /**
+ * 用户填的一格地址 → 一条真能打开的网址。
+ *
+ * 与 resolveInput 分工不同：那个管的是**地址栏**——认不出网址就当关键词搜；
+ * 这个管的是**「我的站点」里那一格**，那里的东西按定义是一个站点，
+ * 因此绝不落到搜索上去，缺的只会是协议头：用户填 `bilibili.com` 是常态，
+ * 而 `new URL('bilibili.com')` 会抛，起始页拿不到域名就会把这**整条**静默丢掉
+ * （见 useTiles 的 domainOf）——存进去一个打不开、也看不见的站点，比拒绝它更糟。
+ *
+ * 判据保守：只有明摆着带协议的才原样留着（`http://` `https://` `file://`
+ * 这一类带 `//` 的，以及 about: / file: / data: 这些不带斜杠的），其余一律补
+ * `https://`。`localhost:8080` 因此会被补成 `https://localhost:8080`
+ * ——本机的东西本来就不该进起始页那一列站点，补成 https 至少是一条合法的网址。
+ *
+ * 空串回空串：那是「还没填」，由调用方去说，不在这里编一个网址出来。
+ */
+export function asSiteUrl(input: string): string {
+  const s = input.trim()
+  if (!s) return ''
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) return s
+  if (/^(about|file|data|blob|view-source|chrome):/i.test(s)) return s
+  return `https://${s}`
+}
+
+/**
+ * 网址 → 可注册域名（`https://weread.qq.com/x` → `qq.com`）。
+ *
+ * 认不出就是 null：不是网址、没有主机名、或者本机文件那种没有域名的地址。
+ * **「认不出」必须是一条干净的路**，不能拿整条 URL 顶上——起始页拿它去重、
+ * 拿它归栏（见 renderer/src/home/useTiles.ts），而「被移除的站点域名」那份名单
+ * （services/hiddenSiteStore.ts）也是按同一把尺子写的。两处必须同源：
+ * 一边记 qq.com、另一边拿 weread.qq.com 去比，一条也中不了，删了等于没删。
+ */
+export function domainOf(url: string | null | undefined): string | null {
+  if (!url) return null
+  const host = hostOf(url)
+  return host ? registrableDomain(host) : null
+}
+
+/**
  * 本机文件的名字：`file:///C:/书/斗破苍穹.txt` 得到 `斗破苍穹.txt`。
  *
  * 只给 `file:` 用，而且**只有它**能给出一件可以显示的东西——本机路径

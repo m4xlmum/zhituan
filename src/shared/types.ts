@@ -3,13 +3,14 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-import type { BallCustomFit, BallIconChoice, HomeTheme, SiteSection } from './constants'
+import type { BallCustomFit, BallIconChoice, HomeTheme, HomeView, SiteSection } from './constants'
 
 export type {
   BallCustomFit,
   BallIcon,
   BallIconChoice,
   HomeTheme,
+  HomeView,
   SectionId,
   SiteSection,
   SizePreset
@@ -84,6 +85,14 @@ export interface UiConfig {
    * 网页与本机文件更不受影响。见 @shared/constants 的 HomeTheme。
    */
   homeTheme: HomeTheme
+  /**
+   * 起始页的视图（列表 / 小图标 / 图标），见 @shared/constants 的 HomeView。
+   *
+   * 与 homeTheme 同一条规矩：只作用于起始页那一屏，顶栏、右栏、面板、
+   * 设置页与阅读页都不跟着换。默认「列表」=这一页一直以来的样子，
+   * 于是老配置一个字都不用迁（新字段 + 安全默认值，不必动 CONFIG_VERSION）。
+   */
+  homeView: HomeView
   /**
    * 界面底板透明度 0–1。
    *
@@ -220,6 +229,27 @@ export interface PresetSite {
   url: string
   /** 归属起始页的哪一栏。表里的站点都有栏，用户自己加的站点不在表里 */
   section: SiteSection
+}
+
+/**
+ * 起始页上被移除掉的站点域名。
+ *
+ * 起始页那一列站点的来源有三个（见 renderer/src/home/useTiles.ts）：
+ * **我的站点**（有记录，本来就删得掉）、**常访问**（历史现推出来的）、
+ * **热门站点**（内置表）。后两种没有「属于谁」这一说——删掉它无处可删。
+ *
+ * 于是「删除」这件事统一落成一份**域名黑名单**：删一行就是记下这个域名别再出现，
+ * 添回一个站点就是把它从这份名单里划掉。三个来源因此只有一套删法，
+ * 用户在界面上也只需要知道一条规矩：**删了就是没了**。
+ *
+ * 记的是可注册域名（`qq.com`，不是 `weread.qq.com`）——起始页本来就是一域名一行
+ * （去重用的同一把尺子，见 useTiles 的 domainOf），否则删掉 weread.qq.com
+ * 之后 book.qq.com 会顶上来，看着像没删干净。
+ */
+export interface HiddenSite {
+  id: string
+  domain: string
+  removedAt: number
 }
 
 export interface Bookmark {

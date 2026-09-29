@@ -104,7 +104,7 @@ const CAPTURES = [
     '--home --body --theme crt-green --width 1280 --height 720'
   ],
   ['settings.png', 'settings-1232x676.png', '--settings --body --width 1280 --height 720'],
-  ['popover.png', 'popover-sites-320x420.png', '--popover --width 320 --height 420'],
+  ['popover.png', 'popover-history-320x420.png', '--popover --kind history --width 320 --height 420'],
   [
     'ball.png',
     'preview-collapsed-200x200-zoom5.png',
@@ -461,7 +461,7 @@ function htmlShots() {
       ${cell('系统设置', '窗口内的一页', appWindow('settings.png', FRAME_W / WIN_W))}
       ${cell(
         '弹出面板',
-        '站点 / 历史 / 书签 / 显示',
+        '历史 / 书签 / 缩放 / 标签页 / 排版',
         pad(
           `<img src="popover.png" style="height:${FRAME_H - 40}px;filter:drop-shadow(0 12px 30px rgba(0,0,0,0.45))">`
         )

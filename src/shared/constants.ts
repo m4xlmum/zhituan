@@ -399,6 +399,38 @@ export function worldOfTheme(id: HomeTheme): HomeWorld {
 }
 
 /**
+ * 起始页的三种视图。
+ *
+ * 列表是一行一个站点（这一页一直以来的样子）；小图标与图标都是网格式排布，
+ * 只差格子的大小——小格子一屏放得下更多站点，大格子里的图标才认得出是什么。
+ *
+ * 三档都留在两套世界里：**终端世界不画图标**（那一套只有字），于是同一档在
+ * 那边是「同一个格子里只印名字」。这不是两套东西，因此不为终端另开一档。
+ *
+ * id 同时是对外的名字（CSS、探针参数、落盘的配置值），因此改的是文案不是它。
+ */
+export type HomeView = 'list' | 'grid' | 'icons'
+
+export const HOME_VIEWS: ReadonlyArray<{
+  id: HomeView
+  label: string
+  /** 鼠标悬停时说的那句话。三档的差别只有尺寸，因此说的是尺寸 */
+  hint: string
+}> = [
+  { id: 'list', label: '列表', hint: '一行一个站点，带域名与图标' },
+  { id: 'grid', label: '小图标', hint: '小格排布，一屏放得下更多站点' },
+  { id: 'icons', label: '图标', hint: '大格排布，图标看得更清楚' }
+]
+
+/**
+ * 默认视图：列表。
+ *
+ * 它是这一页一直以来的样子——升级过来的人看到的版面一个像素都不该变
+ * （与 11 版给 readerOpacity 默认 1 是同一条规矩）。
+ */
+export const DEFAULT_HOME_VIEW: HomeView = 'list'
+
+/**
  * 8 版收掉的主题。
  *
  * 它们全是荧光屏那一类的，所以迁移时落到同属终端世界的磷绿上，
@@ -553,8 +585,9 @@ export const UPDATE_SPAWN_GRACE_MS = 3_000
  * 退出流程的时间上限（毫秒）：从 app.quit() 起算，到这个点还没走到 will-quit
  * 就直接切进程。
  *
- * 正常退出是毫秒级的：before-quit 里同步落盘五份文件（config / sites /
- * history / bookmarks / reading），will-quit 里拆窗口托盘、然后 app.exit(0)。
+ * 正常退出是毫秒级的：before-quit 里同步落盘六份文件（config / sites /
+ * home-hidden / history / bookmarks / reading），will-quit 里拆窗口托盘、
+ * 然后 app.exit(0)。
  * 但只要其中一次写盘被拖住，整条链就停在半路，进程一直不退——实测在这台机器
  * 上卡过四十多秒（那次的补丁是 will-quit 里改用 app.exit(0)，见 main/index.ts，
  * 可它救不了「根本走不到 will-quit」的情形）。

@@ -17,31 +17,44 @@
 import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import {
   DEFAULT_HOME_THEME,
+  DEFAULT_HOME_VIEW,
   DEFAULT_SECTION,
   LOCAL_FORMATS_NOTE,
   SECTIONS,
   worldOfTheme,
   type HomeTheme,
+  type HomeView,
   type SectionId
 } from '@shared/constants'
 import { resolveInput } from '@shared/url'
-import type { AppConfig, Bookmark, HistoryEntry, SiteRecord, TabState } from '@shared/types'
+import type {
+  AppConfig,
+  Bookmark,
+  HiddenSite,
+  HistoryEntry,
+  SiteRecord,
+  TabState
+} from '@shared/types'
 import StartPage from './StartPage.vue'
 import { useBox } from './useBox'
 import type { HomeRow } from './useRows'
-import { plateRowsOf, statOf, tilesOf } from './useTiles'
+import { planOfRemove, planOfSave, plateRowsOf, statOf, tilesOf } from './useTiles'
 import { applyThemeToDocument } from '../composables/useTheme'
 import type { HomeTile } from './types'
 
 const mySites = ref<SiteRecord[]>([])
 const history = ref<HistoryEntry[]>([])
 const bookmarks = ref<Bookmark[]>([])
+/** 起始页上被移除掉的域名。三个来源共用这一份名单，见 useTiles 的 tilesOf */
+const hidden = ref<HiddenSite[]>([])
 const config = ref<AppConfig | null>(null)
 const query = ref('')
 /** 此刻停在哪一栏 */
 const plate = ref<SectionId>(DEFAULT_SECTION)
 /** 起始页的主题，见 config.ui.homeTheme。**只这一页**跟着它换，界面那几份不动 */
 const theme = ref<HomeTheme>(DEFAULT_HOME_THEME)
+/** 这一列站点怎么排：列表 / 小图标 / 图标，见 @shared/constants 的 HOME_VIEWS */
+const homeView = ref<HomeView>(DEFAULT_HOME_VIEW)
 /** 开着几张标签页。页眉要报这个数 */
 const tabCount = ref(0)
 
@@ -64,10 +77,12 @@ const compact = computed(() => pageH.value < 360)
 onMounted(async () => {
   config.value = await window.zhituan.config.get()
   applyTheme(config.value.ui.homeTheme)
+  homeView.value = config.value.ui.homeView
   offConfig = window.zhituan.config.onChanged((next) => {
     config.value = next
     // 主题也可能是在系统设置里改的，那条路上只有这条广播会通知到这里
     applyTheme(next.ui.homeTheme)
+    homeView.value = next.ui.homeView
   })
 
   /**
@@ -100,12 +115,14 @@ async function refreshHistory(): Promise<void> {
 }
 
 async function reload(): Promise<void> {
-  const [sites, marks] = await Promise.all([
+  const [sites, marks, gone] = await Promise.all([
     window.zhituan.sites.list(),
-    window.zhituan.bookmarks.list()
+    window.zhituan.bookmarks.list(),
+    window.zhituan.hidden.list()
   ])
   mySites.value = sites
   bookmarks.value = marks
+  hidden.value = gone
   await refreshHistory()
 }
 
@@ -117,8 +134,11 @@ async function reload(): Promise<void> {
  * 这里只剩「把这些喂给它们」以及「量出这一页有多高」。
  */
 
+/** 被移除掉的那些域名。名单存的是整条记录（有 id 与时间），这里只要域名 */
+const hiddenDomains = computed(() => hidden.value.map((item) => item.domain))
+
 const tiles = computed<HomeTile[]>(() =>
-  tilesOf(mySites.value, history.value, bookmarks.value)
+  tilesOf(mySites.value, history.value, bookmarks.value, hiddenDomains.value)
 )
 
 const lastRead = computed<HistoryEntry | null>(() => history.value[0] ?? null)
@@ -222,6 +242,55 @@ async function openFile(): Promise<void> {
   await refreshHistory()
 }
 
+// ---------------------------------------------------------------- 增删改
+
+/**
+ * 编辑器里按了保存。
+ *
+ * 这一下要落成哪几件事，由 useTiles 的 planOfSave 说清楚——「改一行」在数据上
+ * 可能同时是三件事（收成一条我的站点、把旧域名关掉、把新域名放出来），
+ * 而那条规矩是纯数据，探针要求得到真跑的那一份。这里只负责把它执行出去。
+ *
+ * 计划是 null = 那个网址认不出域名。那时**什么都不做**：这样的记录存下去
+ * 也永远显示不出来（见 planOfSave 里那段账），不如不落盘。
+ *
+ * 顺序不能换：先存站点（新的那条记录要是在名单里，得先有它），再关旧域名，
+ * 最后放新域名——「放出来」必须排在「关掉」之后，否则同一个域名在两步之间
+ * 会短暂地既在名单里又不在，而落盘是两次写。
+ */
+async function saveSite(draft: {
+  tile: HomeTile | null
+  title: string
+  url: string
+}): Promise<void> {
+  const plan = planOfSave(draft.tile, draft, hiddenDomains.value)
+  if (!plan) return
+  if (plan.save.id) {
+    await window.zhituan.sites.update({
+      id: plan.save.id,
+      patch: { title: plan.save.title, url: plan.save.url }
+    })
+  } else {
+    await window.zhituan.sites.add({ title: plan.save.title, url: plan.save.url })
+  }
+  if (plan.hide.length) await window.zhituan.hidden.add({ domains: plan.hide })
+  if (plan.unhide.length) await window.zhituan.hidden.remove({ domains: plan.unhide })
+  await reload()
+}
+
+/**
+ * 某一行上按了移除。
+ *
+ * 两条一起落（记录删掉 + 域名进名单），理由见 planOfRemove：只做一条，
+ * 常访问或热门站点表会立刻把同一行顶回来，看着像没删动。
+ */
+async function removeSite(tile: HomeTile): Promise<void> {
+  const plan = planOfRemove(tile)
+  if (plan.removeId) await window.zhituan.sites.remove({ id: plan.removeId })
+  await window.zhituan.hidden.add({ domains: plan.hide })
+  await reload()
+}
+
 // ---------------------------------------------------------------- 主题
 
 /**
@@ -248,6 +317,19 @@ function pickTheme(next: HomeTheme): void {
   applyTheme(next)
   void window.zhituan.config.patch({ ui: { homeTheme: next } })
 }
+
+/**
+ * 换一档站点排布。
+ *
+ * 与主题走同一条路（先落地再持久化，见上面那段），只是它不改皮、只改格子的尺寸，
+ * 因此没有 applyXX 那一步：StartPage 收到新的 view 会自己重算列数与格子数。
+ * 排布是「这一屏现在怎么排」，不是这一页的身份——但它会留在配置里，
+ * 下次打开还是这一档：一列站点每开一次都要重排一次，是件很烦的事。
+ */
+function pickView(next: HomeView): void {
+  homeView.value = next
+  void window.zhituan.config.patch({ ui: { homeView: next } })
+}
 </script>
 
 <template>
@@ -259,6 +341,7 @@ function pickTheme(next: HomeTheme): void {
       :tab-count="tabCount"
       :query="query"
       :theme="theme"
+      :view="homeView"
       :world="world"
       :compact="compact"
       :note="note"
@@ -267,8 +350,11 @@ function pickTheme(next: HomeTheme): void {
       @open-file="openFile"
       @submit="submit"
       @pick="pickTheme"
+      @pick-view="pickView"
       @pick-plate="pickPlate"
       @move-plate="movePlate"
+      @save-site="saveSite"
+      @remove-site="removeSite"
       @update:query="query = $event"
     />
   </div>

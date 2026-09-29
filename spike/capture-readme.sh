@@ -71,8 +71,9 @@ cp_ home-crt-green-1232x676.png home-crt-green.png
 cp_ settings-1232x676.png       settings.png
 
 echo "===== 弹出面板：真实窗口尺寸 320×420，1:1 ====="
-probe --popover --width 320 --height 420
-cp_ popover-sites-320x420.png   popover.png
+# 面板有五张（历史 / 书签 / 缩放 / 标签页 / 排版），README 里露的是历史那一张
+probe --popover --kind history --width 320 --height 420
+cp_ popover-history-320x420.png popover.png
 
 echo "===== 悬浮球：40px 的球放大 5 倍，带透明通道 ====="
 # --ball-zoom 5 而不是「抓一张大的」：球在自己那扇窗里是铺满的（40px 的窗里 40px 的球），

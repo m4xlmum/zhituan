@@ -16,6 +16,7 @@ import {
   DEFAULT_BOSS_HIDE,
   DEFAULT_BOSS_MINIMIZE,
   DEFAULT_HOME_THEME,
+  DEFAULT_HOME_VIEW,
   DEFAULT_NEW_TAB_URL,
   DEFAULT_READER_FONT,
   DEFAULT_READER_LINE,
@@ -23,6 +24,7 @@ import {
   DEFAULT_SEARCH_TEMPLATE,
   HIDE_DELAY_MS,
   HOME_THEMES,
+  HOME_VIEWS,
   LEGACY_HOME_THEMES,
   LEGACY_PORTRAIT_SIZES,
   OPACITY_MAX,
@@ -61,6 +63,8 @@ export function defaultConfig(): AppConfig {
       topBarOpen: true,
       railOpen: true,
       homeTheme: DEFAULT_HOME_THEME,
+      // 默认列表：这是起始页一直以来的样子，升级过来的人看到的版面不该变
+      homeView: DEFAULT_HOME_VIEW,
       // 默认不透明：底板是界面的一部分，一上来就是半透的会让人以为没画好
       backgroundOpacity: 1,
       // 正文默认不淡：这一条管的是「我在读的那点字」，一上来就淡着
@@ -139,6 +143,7 @@ function normalize(input: Partial<AppConfig> | null | undefined): AppConfig {
     topBarOpen: input.ui?.topBarOpen ?? d.ui.topBarOpen,
     railOpen: input.ui?.railOpen ?? d.ui.railOpen,
     homeTheme: input.ui?.homeTheme ?? d.ui.homeTheme,
+    homeView: input.ui?.homeView ?? d.ui.homeView,
     backgroundOpacity: input.ui?.backgroundOpacity ?? d.ui.backgroundOpacity,
     readerOpacity: input.ui?.readerOpacity ?? d.ui.readerOpacity,
     readerFontSize: input.ui?.readerFontSize ?? d.ui.readerFontSize,
@@ -229,6 +234,11 @@ function normalize(input: Partial<AppConfig> | null | undefined): AppConfig {
   ui.readerOpacity = clamp(ui.readerOpacity, READER_OPACITY_MIN, READER_OPACITY_MAX)
   if (!HOME_THEMES.some((t) => t.id === ui.homeTheme)) {
     ui.homeTheme = d.ui.homeTheme as HomeTheme
+  }
+  // 视图同一条规矩：表里没有的（旧配置、手改坏的、将来删掉的那一档）回落默认，
+  // 而不是让起始页拿着一档不认识的视图去渲染一个空白页
+  if (!HOME_VIEWS.some((v) => v.id === ui.homeView)) {
+    ui.homeView = d.ui.homeView
   }
   // 图标同理：表里没有的（旧配置、手改坏的、将来删掉的）回落默认。
   // 'custom' 不在 BALL_ICONS 里，单独放行——它指的是用户上传的那张图，

@@ -510,12 +510,13 @@ npx electron spike/preview.js --no-topbar
 | `--home --themes --body` | 起始页三套主题各截一张，外加一张展开的主题面板（都是 912×496） |
 | `--home --theme crt-green --body --width 480 --height 270` | 指定某一套主题、指定窗口尺寸；配 `--body` 后渲染的是那块 432×226 的正文区 |
 | `--home --body --plate local` | 起始页停在某一栏上（六栏任一 id：`all` / `video` / `reading` / `news` / `quiz` / `local`）。id 名单是**从界面上读的**，不在脚本里另抄一份 |
+| `--home --view grid` | 排布换成某一档（`list` / `grid` / `icons`，1.6.7 起）。这一档**点的是状态行那枚真的分段控件**，不是把配置摆好——值与界面之间隔着 `pickView` → `config.patch` → 广播 → 重算列数几步，而「换了档之后列数、一屏放得下几格是不是跟着重算了」正是这一档唯一要看的东西。终端上打一行 `VIEW`：点之前与点之后各一份读数（根上的 `data-view`、哪一枚亮着、算出来的 `--cols`、第一格的盒子、画了几格、第一枚图标的盒子），找不到那枚按钮就打 `VIEW_BAD` 并以 1 退出 |
 | `--home --body --click-plate video` | 先照默认那一眼（全部），**点一下那一栏**再照一张：看的是换栏那一步真的发生了什么，而不只是「那一态长什么样」 |
 | `--home --body --plate local --open-file 斗破苍穹.txt,三体（全集）.pdf` | 停在「离线阅读」上，点那行「打开文件…」，让假桥代劳的那次选文件返回这两本。不给 `--plate` 时它自己就是「离线阅读」——那行只长在那一栏里 |
 | `--theme night` | 换一套主题名。**只有起始页那一份文档读它**（1.5.1 起）——所以配 `--home` 才是「换皮」，配别的页面时它只是把 `ui.homeTheme` 记进那一份 JSON，画面一个像素都不动。唯一的例外是 `--settings`：设置页那颗选中的主题按钮读的就是 `ui.homeTheme`，于是 `--settings --theme crt-green` 会看到磷绿那颗亮着 |
 | `--settings` | 系统设置 |
-| `--popover` | 弹出面板（另一扇窗、另一份文档）。终端上打一行 `POPOVER`：整组读数照 `POPOVER_MEASURE` 原样印出来——`kind` / `alpha`（写在文档根上的那个值，空串就意味着这份文档没写、底板不会淡）/ `panel`（面板那一整块的矩形）/ `panelBg` / `panelBorder` / `rowColor` / `rowCount` / `title`，排版那一张另给一栏 `typeset`（三行的标签 / 读数 / 上下限 / 步长 / 值 / 轨道实测矩形）。**1.6.5 起才印**：在这之前面板那一档落进的是起始页那条分支，打出来是一行全 null 的 `PAGE`（那套读数问的 `.term` / `.modern` / 栏目线面板上一个都没有），面板这一支在终端里看起来像「量不到」。`rowCount` 数的是 `.row`，而**排版那张的每一行是 `.trow`**——它上面 `rowCount` 为 0 不是「一行都没画」，是问错了类名，要读 `typeset` 那一栏。**尺寸必须自己传对**：面板这份文档的 `.panel` 是 `width/height: 100%`，只给 `--popover` 的话它会被拉满整块视口（960×540），量出来的 `panel` 就是视口本身、不是面板——真实窗口尺寸在 `popoverWindow.ts` 的 `sizeOf` 里，宽度恒为 **320**，高度按类型：**420**（站点 / 历史记录 / 书签 / 显示）、**360**（标签页）、**260**（排版）。 |
-| `--popover --kind tabs` | 面板有六张（站点 / 历史记录 / 书签 / 显示 / 标签页 / 排版），换一张看 |
+| `--popover` | 弹出面板（另一扇窗、另一份文档）。终端上打一行 `POPOVER`：整组读数照 `POPOVER_MEASURE` 原样印出来——`kind` / `alpha`（写在文档根上的那个值，空串就意味着这份文档没写、底板不会淡）/ `panel`（面板那一整块的矩形）/ `panelBg` / `panelBorder` / `rowColor` / `rowCount` / `title`，排版那一张另给一栏 `typeset`（三行的标签 / 读数 / 上下限 / 步长 / 值 / 轨道实测矩形）。**1.6.5 起才印**：在这之前面板那一档落进的是起始页那条分支，打出来是一行全 null 的 `PAGE`（那套读数问的 `.term` / `.modern` / 栏目线面板上一个都没有），面板这一支在终端里看起来像「量不到」。`rowCount` 数的是 `.row`，而**排版那张的每一行是 `.trow`**——它上面 `rowCount` 为 0 不是「一行都没画」，是问错了类名，要读 `typeset` 那一栏。**尺寸必须自己传对**：面板这份文档的 `.panel` 是 `width/height: 100%`，只给 `--popover` 的话它会被拉满整块视口（960×540），量出来的 `panel` 就是视口本身、不是面板——真实窗口尺寸在 `popoverWindow.ts` 的 `sizeOf` 里，宽度恒为 **320**，高度按类型：**420**（历史记录 / 书签 / 缩放）、**360**（标签页）、**260**（排版）。 |
+| `--popover --kind tabs` | 面板有五张（历史记录 / 书签 / 缩放 / 标签页 / 排版），换一张看。**1.6.7 把「站点」那一张去掉了**：起始页自己就能增删改站点，同一件事不开两处入口（见下面 `home-sections.js` 那一跑） |
 | `--bg 0.35` | 把界面底板透明度设成这个值。看的是「底板淡了、字没淡」 |
 | `--maximized` | 已最大化：没有两栏也没有正文，只在右上角那一小块里浮着「还原键 + 球」。不给尺寸时按那一小块的尺寸开窗（80×48） |
 | `--notice 1.1.0` | 界面里多出更新提示条那一行（地址栏与网页之间）。`--notice-phase ready\|downloading\|error` 换那一态，`--notice-percent 42` 给下载中那条进度线一个长度，`--notice-message` 给失败那一句原因。`--notice-pending` 是「下载中、且用户已经按过『更新并重启』」那一态：那句话变成「下完自动重启安装」、**那颗按钮收起来**（该按的都按完了，没什么可再点的），而 ✕ 照旧在。不给 `--notice` 就一条提示都没有——那正是「没有新版本」的正常样子 |
@@ -584,6 +585,44 @@ JSON 里的 `rightButtons` 是顶栏右侧那排按钮的顺序与坐标（`topI
 只剩悬浮球拖得动，而这件事从代码与截图上都看不出来。
 判据是 `DRAG_BAD` 必须是空的——**一个控件都不能被手柄或拖拽抢走它的点击**。
 合成事件不会合成出 `click`，因此按在按钮上的那些点没有副作用。
+
+`home-hit.js` 与 `preview.js` 那一支分工不同：`preview.js` 用 `element.click()`
+取证——那是**直接调 DOM**，绕开了整条命中测试；`home-hit.js` 走的是
+`document.elementFromPoint()`，也就是**用户这一下点到的是谁**。起始页上每一处可点的
+东西都逐个问一遍（输入框、页眉那枚「添加」、每一栏的按键、每一行、状态行那三枚排布键、
+主题键），判据是「点到的东西必须是它自己或它的后代」——**祖先不算**，那正是「被盖住」
+的样子。行尾那两枚「编辑 / 移除」另走一遍：它们平时是 `display:none`（鼠标停在那一行
+上才出现），因此先真把指针挪上去（`sendInputEvent` 的 `mouseMove` 会走 Chromium 那一侧
+的命中测试，`:hover` 因此是真的），再问这一刻那两枚按钮上站着谁——它们**盖在行的右端**，
+而那底下正是 `.open` 那一整片可点区，回来的是 `.open` 就说明用户点「移除」时开的是
+这个站点，比点不到更糟。末了真按一下「编辑」，看编辑器开没开、这一下有没有**同时**
+把这个站点打开。`--view grid|icons` 让上面这一整套在网格那两档下再问一遍（两档的
+DOM 长得不一样，只量列表那一档是不够的）。`--theme` 换一档皮再走一遍：那几套皮
+连按钮里的**字**都不一样（现代世界「编辑 / 移除」、终端世界 `edit`/`del`），
+所以认按钮不能按文字去认。换皮这一步其实**已经由假桥做完了**（`preview:options`
+里那个 `theme`），点菜单只是为了量一条真实路径；菜单里每一项的 id 挂在
+`.chips` 那个子元素上（不在 `.item` 自己身上），早先这里读 `el.dataset.theme`
+读不到就退成 `textContent`，而那三行写的是说明文字，于是 `--theme crt-green`
+永远匹配不上、每次都打印一行看着像故障的 `THEME_BAD`——探针自己认错了人。
+
+```bash
+npx electron spike/home-hit.js --view grid
+```
+
+**起始页那一列站点上的增删改，落成的到底是哪几件事**（Q11–Q13）。
+`spike/home-sections.js` 打包的是**真跑在界面里的那几份代码**（`useTiles.ts` 的
+`tilesOf` / `planOfSave` / `planOfRemove`，加上 `services/hiddenSiteStore.ts`），
+验的是「删除」「保存」这两下背后的规矩：
+被移除的域名必须从**三个来源一并消失**（历史 / 我的站点 / 预置——只挡住其中一条就是
+没删干净，同一行还在原地）；改一行在数据上其实是**把它收成一条自己的站点**（常访问与
+预置表没有记录可改），换了域名时旧域名要一并进名单；空着或认不出域名的输入**什么都不写**；
+那份名单按**注册域**去重、重复移除不叠账、拼不出主机的写法不记，而且**跨启动还在**。
+名单里的写法一律取那一行自己的 `domain`，不手写域名字符串——起始页上那一行的键是注册域
+（`myblog.example.org` 那一行的键是 `example.org`），手写一份就等于在探针里另立一把尺子。
+
+```bash
+npx electron spike/home-sections.js
+```
 
 ```bash
 npx electron spike/live-app.js
@@ -836,8 +875,9 @@ env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js
 env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js --w 960 --h 540
 ```
 
-**右栏那条「阅读」滑块到底被谁接着**（Q77）。这一支比 `preview.js` 的 `RAIL_STACK`
-多问三件事，因为「机制是活的」已经由 A12 与 `txt-big-opacity.js` 答过了，剩下的是
+**右栏那条「阅读」滑块到底被谁接着**（Q77），外加右栏最上面那两格开关换了排法之后
+**还按不按得到**（Q82）。这一支比 `preview.js` 的 `RAIL_STACK` 多问三件事，因为
+「机制是活的」已经由 A12 与 `txt-big-opacity.js` 答过了，剩下的是
 **界面**那一半：① `.stack` 的 `clientHeight / scrollHeight / scrollTop`，以及三条滑块
 **转 90° 之后**真正占的那块矩形（`getBoundingClientRect` 给的就是变换后的，量它才
 对得上）；② 沿第三条的竖线从上到下打一串 `elementFromPoint`，看每一段归谁——
@@ -846,6 +886,15 @@ env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js --w 960 
 读配置变没变，再沿轨道逐段各按一次（合成事件绕过了命中与裁剪，A12 走的就是那条路，
 所以它证明不了用户那一下）。默认跑用户那台机器的窗口尺寸 903×508（`--w/--h` 可换）。
 读数落 `spike/out/rail-hit.json`。
+
+1.6.7 加问的第四件是那两格开关的**形状与可点性**：两格按**提示文字的开头**去认
+（不按图标、也不按次序——次序正是这一问要量的事，拿它当尺子等于自己证明自己），
+量它们是不是真的「一个在一个下面」（判据是**与下面每一格同宽**：并排的话两格各自
+只有半格宽）、中点打 `elementFromPoint` 是不是落在**这一格里面**（按钮里画着 svg，
+还回来的是 `<path>`，所以问的是 `closest('.item')` 归谁），最后拿真鼠标按一下上面
+那格，要的是**它自己那一项变、另一格没动**——只量「有东西变了」是不够的，按错格
+也会变。实测：两格 `{x:860, y:48/76, w:39, h:26}`、缝 2px、与「历史记录」那一格同宽
+同左边界，按下去配置 `{收起时暂停: true, 切走时暂停: true}` → `{false, true}`。
 
 ```bash
 env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-typeset.js
