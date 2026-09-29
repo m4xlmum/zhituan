@@ -438,11 +438,20 @@ const BALL_FIT = (() => {
  * 下载中那一条进度线要 --notice-percent 才有长度，失败那一句要 --notice-message，
  * 而「下载中且已经按过更新并重启」那一态要 --notice-pending（那句话会变长、
  * 按钮会收起来——两件事都只在那一态下看得出来）。
- * 不给 --notice 就一条提示都没有——那正是「没有新版本」的正常样子，
+ * --notice-mixed <登记版本> 是另一条路：**上一次的更新没装成**（详见
+ * UpdateState.mixedInstall）——它自己就能让那一行出现，不需要 --notice。
+ * 不给这些就一条提示都没有——那正是「没有新版本」的正常样子，
  * 因此它同时也是「平时窗口长什么样」的基准。
  */
 const NOTICE = (() => {
   const i = args.indexOf('--notice')
+  const next = i >= 0 ? args[i + 1] : null
+  return next && !next.startsWith('--') ? next : null
+})()
+
+/** --notice-mixed <版本>：本机登记的版本比正在跑的新（上一次的更新没落地） */
+const NOTICE_MIXED = (() => {
+  const i = args.indexOf('--notice-mixed')
   const next = i >= 0 ? args[i + 1] : null
   return next && !next.startsWith('--') ? next : null
 })()
@@ -582,6 +591,7 @@ ipcMain.on('preview:options', (event) => {
     noticePending: NOTICE_PENDING,
     noticePercent: NOTICE_PERCENT,
     noticeMessage: NOTICE_MESSAGE,
+    noticeMixed: NOTICE_MIXED,
     openFile: OPEN_FILE,
     /*
      * 这里**不传 --view**：假桥自己给的默认档就是「列表」，于是开窗那一刻

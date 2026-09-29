@@ -50,6 +50,16 @@
  * 是「已经知道有新版本、用户按了更新并重启、下载失败」——那时提示条本来就在，
  * 它改成说一句「下载失败」，并给一个去发布页的出口。
  *
+ * ## 也说得出「上一次没装成」
+ *
+ * 1.6.6 那次事故的形态是**混合安装**：注册表写着 1.6.7，磁盘上还是 1.6.6。用户
+ * 报了「点了更新并重启，只重启、没更新」，而这个类当时对此一无所知——它只知道
+ * 「发布页上有没有新版」，不知道「本机装的那一版到底落到盘上没有」。于是它一边
+ * 说着「已是最新」，一边让用户反复点那颗按钮。
+ *
+ * refreshMixedInstall 补的就是这一格：读一次注册表，把「登记的是 A 版、我跑着的
+ * 是 B 版」这件事放进状态（见 UpdateState.mixedInstall），由界面说给人听。
+ *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 import { net } from 'electron'
@@ -110,6 +120,13 @@ export interface UpdateDeps {
    * 探针给 0——「安装程序早夭」那条路要用另一个替身亲手点火，不需要真等三秒。
    */
   spawnGraceMs?: number
+  /**
+   * 问一句「本机登记的安装是不是比我正在跑的这一份新」，是就给出那个版本号
+   * （见 installRegistry）。**不给就不问**：探针只关心「应用拿到这个事实之后
+   * 怎么说话」，注册表里装着什么与它无关（真机那一侧由 spike/update-check.js
+   * 的 Q14 直接读一次真注册表来对）。
+   */
+  mixedInstall?: () => Promise<string | null>
 }
 
 /**
@@ -231,12 +248,34 @@ export class UpdateService {
       percent: 0,
       message: deps.enabled ? '' : '开发模式下不检查更新',
       ignored: false,
-      pendingInstall: false
+      pendingInstall: false,
+      mixedInstall: null
     }
   }
 
   getState(): UpdateState {
     return { ...this.state }
+  }
+
+  /**
+   * 读一遍「本机登记的版本 vs 正在跑的这一版」（见 installRegistry 与
+   * UpdateState.mixedInstall）。
+   *
+   * 什么时候读：启动时一次（主进程那边调），以及每次 check() 之前一次。它变的
+   * 时刻只有「装了一版」和「换了文件」两种，而那两种都紧接着一次 check，不值得
+   * 为它开定时器。读完照常广播——这句话要能走到界面上，就得走状态那一个出口。
+   */
+  async refreshMixedInstall(): Promise<UpdateState> {
+    const ask = this.deps.mixedInstall
+    if (!this.deps.enabled || ask === undefined) return this.getState()
+    try {
+      this.setState({ mixedInstall: await ask() })
+    } catch (err) {
+      // 读注册表失败不算「更新这件事失败了」：它是另一件事，界面上一个字都不说
+      log.warn(`读本机登记的安装失败：${reasonOf(err)}`)
+      this.setState({ mixedInstall: null })
+    }
+    return this.getState()
   }
 
   /**
@@ -252,6 +291,10 @@ export class UpdateService {
     if (!options.manual && !this.deps.config.get().update.autoCheck) return this.getState()
     // 正在查或正在下时不叠第二次：并发请求对这件事没有任何好处
     if (this.checking || this.downloading) return this.getState()
+
+    // 顺带问一次「上一次的更新到底落地了没有」（见 refreshMixedInstall）：
+    // 用户按下「检查更新」的这一刻，正是他最可能在想「上一版装上没」的时刻
+    await this.refreshMixedInstall()
 
     let kickDownload = false
     this.checking = true
@@ -481,12 +524,18 @@ export class UpdateService {
    * 下载失败时 version 仍在，提示条就还在，于是它能改口说「下载失败」并给一个
    * 去发布页的出口；查更新失败时 version 是 null（我们确实不知道有没有新版），
    * 提示条自己就收了——不必在界面上弹任何东西。
+   *
+   * 另一种要说话的情形是 mixedInstall：**上一次的更新没落地**（注册表写着新版、
+   * 磁盘上还是旧版），这时哪怕一个字节的更新都还没有，用户也该看到那一行——
+   * 他要的是「为什么我更新了却没变」的答案，而这句话只有应用说得出来。
    */
   private setState(patch: Partial<UpdateState>): void {
     this.state = { ...this.state, ...patch }
     this.state.ignored = this.state.version !== null && this.isIgnored(this.state.version)
     this.deps.onState(this.getState())
-    this.deps.setNoticeVisible(this.state.version !== null && !this.state.ignored)
+    this.deps.setNoticeVisible(
+      (this.state.version !== null && !this.state.ignored) || this.state.mixedInstall !== null
+    )
   }
 
   private isIgnored(version: string): boolean {

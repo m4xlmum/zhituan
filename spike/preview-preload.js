@@ -322,7 +322,11 @@ function emitState() {
  * 真实程序走不到的形状——被忽略的那一版在真机上不占版面，在预览里却占着。
  */
 function syncNotice() {
-  const visible = updateState.version !== null && !updateState.ignored
+  // 与主进程 updateService.setState 里那一行**逐字同构**，否则预览会替产品撒谎：
+  // 除了「有已知新版本、且没被忽略」，本机登记的版本比正在跑的新（mixedInstall）
+  // 时那一行也在
+  const visible =
+    (updateState.version !== null && !updateState.ignored) || updateState.mixedInstall !== null
   if (state.noticeVisible === visible) return
   state.noticeVisible = visible
   emitState()
@@ -332,7 +336,7 @@ function syncNotice() {
  * 更新那条桥。
  *
  * 形态由命令行给（--notice 1.1.0 / --notice-phase ready / --notice-percent 42 /
- * --notice-pending），因为要看的正是那几种形态各自长什么样。**点击是真的会改
+ * --notice-pending / --notice-mixed 1.6.7），因为要看的正是那几种形态各自长什么样。**点击是真的会改
  * 状态的**：「按了更新并重启会走到已下载」「按了 ✕ 这一条会收掉」是这一版最
  * 要紧的两条往返，假桥要是把按钮当摆设，预览里点一下什么都不动，也就验不出
  * 按对了没有。
@@ -350,7 +354,10 @@ const updateState = {
   percent: opts.noticePercent ?? 0,
   message: opts.noticeMessage ?? '',
   ignored: false,
-  pendingInstall: opts.noticePending === true
+  pendingInstall: opts.noticePending === true,
+  // 「上一次的更新没装成」（见 UpdateState.mixedInstall）：这一态在预览里用
+  // --notice-mixed 摆出来，验的是提示条那一行说不说得出那句话
+  mixedInstall: opts.noticeMixed ?? null
 }
 let installCalls = 0
 /** 整体透明度那条滑块发过来的请求，供 --drag-opacity 那一问来读（见下） */

@@ -33,8 +33,24 @@ const phase = computed(() => state.value?.phase ?? 'idle')
 const version = computed(() => state.value?.version ?? null)
 /** 用户已经按过「更新并重启」，只是还没下完——下完自己装 */
 const pending = computed(() => state.value?.pendingInstall ?? false)
+/**
+ * 本机登记的版本比正在跑的这一版新：上一次的更新没落地（详见 UpdateState）。
+ * 值是注册表里那个版本号，没这回事时是 null。
+ */
+const mixed = computed(() => state.value?.mixedInstall ?? null)
 
+/**
+ * 这一行说什么。按「最要紧的那句实话」排：
+ *
+ * 1. 正在下就说进度——那件事正在发生，比什么都要紧；
+ * 2. 上一次没装成（mixed）就说这个。用户报的原话是「点了更新并重启，只重启、
+ *    没更新」，而这句话正是那个现象的名字与出路；
+ * 3. 其余照旧。
+ */
 const text = computed(() => {
+  if (mixed.value !== null && phase.value !== 'downloading') {
+    return '上次更新没装成（文件被占用）——重启电脑后再点一次'
+  }
   switch (phase.value) {
     case 'downloading':
       // 按过「更新并重启」的人要的是「接下来会自己发生什么」，那正是这句话
@@ -104,8 +120,12 @@ function dismiss(): void {
       忽略键。下载中也留着：下载可能是「手动查一下」自己带起来的，用户得有个
       出口，而按它会**真的把在下的那一份中止掉、把半截文件删掉**（见
       updateService 的 ignore）——不然这一版会在他说了「不要」之后继续下完。
+
+      它跟 version 走：这一行现在也有一条「没有已知新版本」的路（上一次没装成，
+      见 mixedInstall），那一路上没有「哪一版」可以被忽略。
     -->
     <button
+      v-if="version !== null"
       class="notice-btn icon"
       :title="`忽略 ${version}，不再提示`"
       :aria-label="`忽略 ${version}，不再提示`"

@@ -27,17 +27,48 @@
 ; 目录项独占，于是随机失败。这也解释了为什么「手动、晚一点、再跑一次」
 ; 有时候能成。
 ;
-; 对策分三层，互相兜底：
+; 对策分四层，互相兜底：
+;   0) customInit             .onInit 里、旧卸载器动手之前，先把「本次是升级、
+;                             上一版装在哪个目录」记下来。**这个判断只能在这里做**：
+;                             旧卸载器跑完会删掉卸载登记项（uninstaller.nsh 结尾的
+;                             DeleteRegKey），等第 2 层再读就什么都没有了。
 ;   1) customCheckAppRunning  旧卸载器动手之前，先把还在跑的纸团收干净，
-;                             并留出时间让句柄落定。原生逻辑只按 $INSTDIR
-;                             前缀匹配找进程、静默分支给的等待也太短。
-;   2) customUnInstallCheck   万一还是失败，**不让升级中断**：把残留清掉，
-;                             然后照常继续覆盖安装。这一层才是把「随机失败」
-;                             变成「必成」的那层——旧卸载器的行为我们改不了，
-;                             能改的是「它失败之后怎么办」。
+;                             并留出时间让句柄落定；**然后问一句「这一版的文件
+;                             删得掉吗」**，删不掉就一个字节都不动、如实报错停下。
+;                             原生逻辑只按 $INSTDIR 前缀匹配找进程、静默分支给的
+;                             等待也太短，而且它没有「先问再动手」这一步。
+;   2) customUnInstallCheck   万一旧卸载器还是失败了，**不让升级中断**：把残留
+;                             清掉，然后照常继续覆盖安装。旧卸载器的行为我们改
+;                             不了，能改的是「它失败之后怎么办」。
 ;   3) customRemoveFiles      我们自己这一版的卸载器不再走会 Abort 的改名搬移，
-;                             改成「先收进程、再带重试地直接删」。**删不干净时
-;                             照旧以非 0 退出**——这一句不能省，理由见那个宏。
+;                             改成「先收进程、再带重试地直接删」，删不净时照旧
+;                             报 2（但**安装器不能指望这个 2**，见那个宏）。
+;
+; ----------------------------------------------------------------------------
+; 这条链路上最花钱的一课，写在最显眼的地方：**旧卸载器的退出码不可信**。
+;
+; 这个文件原先的第 2 层是拿 `$R0 != 0`（旧卸载器的退出码）当门闸的，而那扇门
+; 从来没开过：真机上连着三次升级，安装日志里都是「旧卸载器退出码 0」，尽管
+; $INSTDIR 里明明白白留着上一版的主程序与 app.asar。也就是说，那一层「万一失败
+; 就清场」的兜底从来没跑过，用户拿到的一直是「注册表写着新版本、主程序还是旧版」
+; 的混合安装——这正是「点了更新并重启，只会重启、并没有成功更新」。
+;
+; 那为什么退出码会是 0？本机上量不出一个能解释它的机制：把真实脚本编成探针
+; （spike/nsis-abort-probe/hook-remove.nsi）之后，没被占的目录报 0、被独占句柄
+; 按住 resources\app.asar 的目录报 2，通道本身是通的；而升级路径上那个
+; quitSuccess（common.nsh:79-82，注释写着 "avoid exit code 2"）也不适用——
+; electron-builder.yml 里 oneClick: false，ONE_CLICK 没有定义，那段代码根本
+; 不在我们的路径上。**不去猜它了**：改用文件系统自己说话——「这一版的文件还能
+; 不能删/能不能换」，是唯一一个既不需要信任子进程、又能提前问出口的判据。
+;
+; 于是第 0 层记「是不是升级」，第 1 层先探问、再决定要不要动手，第 2 层的门闸
+; 也换成同一个判断。退出码只记进日志，不参与任何决定。
+;
+; 顺带把一条语言事实记在这儿，免得下一个人（或下一版的我）再踩：
+; LogicLib 的 `==` 是**字符串**比较（展开成 StrCmp），`=` 才是数值比较（IntCmp）。
+; 本文件里 `$ztUpgrading == "1"`、`$ztRc == "0"` 这类写法都是字符串比较——
+; 也正因如此，`$ztHeld != ""`（判一段可能是路径的文本空不空）才是安全的；
+; 写成 `= 0` 反而会把任何非数字文本都读成 0。
 ;
 ; 顺带记一份日志到 %TEMP%\zhituan-install.log：静默安装没有界面，
 ; 出了问题只能靠它说话。
@@ -50,9 +81,32 @@
 
 Var /GLOBAL ztTries     ; 重试计数
 Var /GLOBAL ztRc        ; 子进程退出码
+Var /GLOBAL ztKillText  ; taskkill 自己吐的那几行（多行文本）
+
+; 下面这四个只有**安装器那一趟**用得到，所以只在没有 BUILD_UNINSTALLER 时声明。
+; 不是洁癖：构建带 -WX（警告即错误），而 NSIS 的 6001「声明了没用到」正好咬这种
+; 变量——真机上量过，卸载器那一趟会报
+;     Warning 6001: Variable "ztUpgrading" not referenced or never set
+; 然后整个构建以它失败。探针 spike/nsis-abort-probe/hook-compile-un.nsi 就是为
+; 提前撞上这件事而存在的（它第一次跑就把这条抓出来了）。
+!ifndef BUILD_UNINSTALLER
+  Var /GLOBAL ztUpgrading ; "1" = 本次是升级（注册表里有一个能自卸载的旧版）
+  Var /GLOBAL ztOldDir    ; 旧版装在哪个目录（由它的 UninstallString 推出来）
+  Var /GLOBAL ztUpVer     ; 旧版登记的版本号，只进日志
+  Var /GLOBAL ztHeld      ; 探问结果：删不掉的文件清单（空 = 都删得掉）
+!endif
 
 ; 让日志宏能内联写成 ${zt.Log} "..."（和 electron-builder 自己用的手法一致）
 !define zt.Log `!insertmacro zt.LogMacro`
+
+; 弹框也留一个可替换的口子。理由只有一个：**探针要能无头地跑到底**。
+; 下面那个报错框故意不带 /SD（静默升级时它也必须弹出来，那正是这一层存在的
+; 意思），于是在探针里它会停在一个没有人能点的模态框上，一直到超时。
+; 探针在 !include 本文件之前把 zt.Alert 定义成自己的宏（写文件），就能跑完整条
+; 路径并核对「停下来之前有没有动过用户的东西」。
+!ifndef zt.Alert
+  !define zt.Alert `MessageBox MB_OK|MB_ICONEXCLAMATION`
+!endif
 
 ; ---------------------------------------------------------------------------
 ; zt.LogMacro —— 往 %TEMP%\zhituan-install.log 追加一行
@@ -71,6 +125,12 @@ Var /GLOBAL ztRc        ; 子进程退出码
 ; （`${zt.Log} "旧卸载器退出码 $R0"`：$R0 是在 FileWrite 那一刻才展开的），
 ; 所以那几个 $R 一个都不能拿来存时间。写日志失败（%TEMP% 不可写之类）就安静
 ; 略过，绝不因为记日志把安装搞挂。
+;
+; **消息里能引用的只有 $R0/$R1/$R2 和具名全局变量，不能引用 $0/$1/$2/$9。**
+; 压栈护住的是**调用点**的那几个变量，而本宏自己在 FileWrite 之前就用
+; ${GetTime} 把 $1/$0/$2 写成了年月日（`${GetTime} "" "L" $1 $0 $2 ...`）：
+; 消息里写 `$0` 打出来会是月份，不是你以为的那个值。要记一段临时文本（比如
+; taskkill 吐的那几行）就先存进具名全局变量（ztKillText 就是这么来的）。
 ; ---------------------------------------------------------------------------
 !macro zt.LogMacro MSG
   Push $0
@@ -170,7 +230,10 @@ Var /GLOBAL ztRc        ; 子进程退出码
     IntOp $ztTries $ztTries + 1
     nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /F /IM "${APP_EXECUTABLE_FILENAME}"'
     Pop $ztRc
-    Pop $0
+    ; taskkill 的原话（多行）。存进具名全局而不是 $0：$0 会被 zt.LogMacro 自己
+    ; 的 ${GetTime} 覆盖成月份（见那个宏的说明）。它是**最后一次**那一轮的输出，
+    ; 也正是最该看的那一轮。
+    Pop $ztKillText
     StrCmp $ztRc "128" zt_kill_done_${TAG}          ; 已经没有这个进程了
     ${If} $ztRc == "0"
       ${zt.Log} "[${TAG}] 已强制结束，再确认一次（第 $ztTries 次）"
@@ -182,7 +245,12 @@ Var /GLOBAL ztRc        ; 子进程退出码
   zt_kill_done_${TAG}:
     ${If} $ztRc != "0"
     ${AndIf} $ztRc != "128"
-      ${zt.Log} "[${TAG}] 没能收掉纸团（返回 $ztRc，多为权限不足），改为继续安装"
+      ${zt.Log} "[${TAG}] 没能收掉纸团（返回 $ztRc），改为继续安装"
+      ; 把 taskkill 的原话一起记下来：它带着 Windows 给的原因（「拒绝访问」、
+      ; 「该进程正在终止」之类），是这件事下次再发生时最有用的那一行。
+      ; 它是多行的，接着上一行往下写；读到 "[TAG] taskkill 的原话" 就知道
+      ; 后面这几行都是它的输出，不是新事件。
+      ${zt.Log} "[${TAG}] taskkill 的原话：$\r$\n$ztKillText"
     ${EndIf}
     Sleep 1500
 !macroend
@@ -206,6 +274,142 @@ Var /GLOBAL ztRc        ; 子进程退出码
     Sleep 1000
     IntCmp $ztTries ${TRIES} zt_rm_done_${TAG} zt_rm_${TAG} zt_rm_done_${TAG}
   zt_rm_done_${TAG}:
+!macroend
+
+; 下面两个宏只服务第 1 层，而第 1 层只在安装器那一趟存在（理由写在
+; customCheckAppRunning 的说明里：卸载器那一趟里 $ztUpgrading 恒空）。定义也一并
+; 圈进同一个守卫：卸载器那一趟要是有人误插它们，会当场报「宏不存在」而不是
+; 悄悄引用了四个没声明的变量。
+!ifndef BUILD_UNINSTALLER
+
+; ---------------------------------------------------------------------------
+; zt.AskDeletable —— 只问不删：「这个文件现在删得掉吗」
+;
+; 判据是一个不太起眼的事实：CreateFileW(path, DELETE, dwShareMode=0, …)
+; **一个字节都不会删**，它只是申请 DELETE 权限、并要求现有句柄都允许删除共享
+; ——而这正是 DeleteFile 与改名搬移的前提（share_delete 不给，改名就注定失败）。
+; 所以它是一次非破坏性的试问：拿得到句柄 = 等一下删得掉，拿不到 = 有东西攥着它。
+; 拿到之后立刻 CloseHandle，别把句柄留到自己手里。
+;
+; 返回类型写 i（32 位）：真机上量过（spike/nsis-abort-probe/candelete.nsi），
+; 失败时它给的是 -1（INVALID_HANDLE_VALUE），能比对。**别去读 GetLastError**：
+; 那几条读数在 System::Call 里全被插件残留带成 80，区分不了「被占用」与「权限
+; 不够」——而这个宏本来也不需要区分，它只回答能不能删。
+;
+; 按得住的东西追加进 $ztHeld（具名全局，见 zt.Preflight），一行一个。
+; ---------------------------------------------------------------------------
+!macro zt.AskDeletable PATH
+  StrCpy $0 "${PATH}"
+  System::Call 'kernel32::CreateFileW(w r0, i 0x10000, i 0, p 0, i 3, i 0x80, p 0) i .r1'
+  ${If} $1 == "-1"
+    StrCpy $ztHeld "$ztHeld${PATH}$\r$\n"
+  ${Else}
+    System::Call 'kernel32::CloseHandle(i r1) i .r2'
+  ${EndIf}
+!macroend
+
+; ---------------------------------------------------------------------------
+; zt.Preflight —— 动手之前先探问一遍，删不掉就一个字节都不动
+;
+; 为什么非要抢在动手之前问：旧卸载器一开跑就把文件改名搬进 $PLUGINSDIR 再删，
+; 改不动就 Abort——而**已经搬走的那一半随它一起消失**（$PLUGINSDIR 是临时目录）。
+; 也就是说，等发现「有文件被占用」的时候，用户的安装已经缺了一块。这正是
+; 「点了更新并重启，只会重启、并没有成功更新」的来源：旧卸载器报 0（它自己不
+; 觉得失败）、安装器照常往下铺新文件、被占住的那个没人管。
+; 探问放在旧卸载器动手之前，代价是一次 CreateFileW，换来的是「拦下来的时候
+; 用户的东西一个字节都没动」。
+;
+; 拦下之后要做三件事，缺一不可：
+;   · 如实说清楚（说清是哪个目录、可能是什么占着、该怎么办）；
+;   · **把应用叫回来**——用户是从应用里点的更新，应用进程已经被 zt.KillApp 收掉
+;     了，这时候静悄悄退出，用户看到的就是「应用关了、然后什么都没有」；
+;   · SetErrorLevel 2 再 Quit：失败要有失败的退出码，调用方和批处理看得到。
+;
+; 探问只覆盖「升级路径上真正被改名搬移、也真正最容易被占住」的那两个文件：
+; 主程序与 resources\app.asar（其余 dll/pak 释放得早，且被占住也能正常覆盖）。
+; 两个都不在（全新安装）时 $ztHeld 是空的，照常往下走。
+;
+; 重新拉起应用用 StdUtils.ExecShellAsUser：装完后模板自己拉起应用走的也是它
+; （common.nsh:131、assistedInstaller.nsh:57），语义是「以当前交互用户的身份、
+; 走 shell 打开」。这里还没到那一步——$launchLink 要到 installSection.nsh 后半段
+; 才赋值——所以直接给主程序的完整路径。
+; ---------------------------------------------------------------------------
+!macro zt.Preflight TAG
+  Push $0
+  Push $1
+  Push $2
+  StrCpy $ztHeld ""
+  ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    !insertmacro zt.AskDeletable "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+  ${EndIf}
+  ${If} ${FileExists} "$INSTDIR\resources\app.asar"
+    !insertmacro zt.AskDeletable "$INSTDIR\resources\app.asar"
+  ${EndIf}
+  ${If} $ztHeld != ""
+    ${zt.Log} "[${TAG}] 动手前的探问：这些文件删不掉，一个字节都不动就停下——$\r$\n$ztHeld"
+    ${zt.Alert} "升级没能开始。$\r$\n$\r$\n$INSTDIR 里有文件正被别的程序占着——多半是上一次没退干净的纸团，也可能是网盘同步、杀毒软件的实时扫描。这次没有改动任何文件，你的纸团还是原来那个样子。$\r$\n$\r$\n请先重启电脑，等桌面彻底起来之后，再点一次「更新并重启」。"
+    ; 这一句必须在 Quit 之前：应用是用户点更新的那个东西，得还给他。
+    ${StdUtils.ExecShellAsUser} $0 "$INSTDIR\${APP_EXECUTABLE_FILENAME}" "open" ""
+    SetErrorLevel 2
+    Quit
+  ${EndIf}
+  ${zt.Log} "[${TAG}] 动手前的探问：要替换的文件都删得掉（或者本来就不在），照常往下走"
+  Pop $2
+  Pop $1
+  Pop $0
+!macroend
+
+!endif ; BUILD_UNINSTALLER（zt.AskDeletable / zt.Preflight 只属于安装器那一趟）
+
+; ---------------------------------------------------------------------------
+; customInit —— 记下「本次是不是升级」「上一版装在哪儿」
+;   （.onInit 里、initMultiUser 之后、旧卸载器动手之前跑）
+;
+; 为什么非要这么早：旧卸载器跑完会删掉自己的卸载登记项（uninstaller.nsh 结尾的
+; DeleteRegKey），等第 2 层 customUnInstallCheck 再想读「上一版是谁、装在哪」，
+; 就什么都没有了。而第 2 层的门闸恰恰需要这个判断。
+;
+; 判据是**卸载登记项在不在**（${UNINSTALL_REGISTRY_KEY} 的 UninstallString）：
+; 有，说明这台机器上有个能自己卸载的旧版，本次是升级；没有就是全新安装。
+; 全新安装时用户完全可能挑一个已存在、装着别的东西的目录——那种目录一个字节
+; 都不能动，所以第 2 层必须能把全新安装整个排除在外，靠的就是 $ztUpgrading。
+;
+; SHELL_CONTEXT 是 NSIS 的**根键别名**，不是宏（`!ifdef SHELL_CONTEXT` 是假；
+; 真机上试过：把它当根键读，读得到 HKCU 里的值，见 spike/nsis-abort-probe/sctx2.nsi）。
+; 运行时它等于当前 shell 变量上下文，而 NSIS 的默认上下文就是 current，本项目
+; 又是 per-user 构建（electron-builder.yml: perMachine: false）——所以它读到的
+; 是 HKCU，和 electron-builder 自己写登记项时用的根键完全一致。后面那次
+; HKEY_CURRENT_USER 只是兜底，读不到（比如以后改成 per-machine）也不影响：
+; $ztUpgrading 自然是 "0"，第 1 层的探问跳过，行为退回改之前的样子。
+;
+; $ztOldDir 取 ${INSTALL_REGISTRY_KEY} 的 InstallLocation（electron-builder 在
+; include/installer.nsh:104 写的，也正是它自己决定 $INSTDIR 时读的那个值，
+; 见 multiUser.nsh:26），读不到就退回当时的 $INSTDIR。它和 $ztUpVer 都只进日志：
+; 升级再出问题时，「注册表说上一版装在哪、是哪个版本」是最省事的两份现场证据。
+; ---------------------------------------------------------------------------
+!macro customInit
+  StrCpy $ztUpgrading "0"
+  StrCpy $ztOldDir "$INSTDIR"
+  StrCpy $ztUpVer ""
+
+  StrCpy $0 ""
+  ReadRegStr $0 SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
+  ${If} $0 == ""
+    ClearErrors
+    ReadRegStr $0 HKEY_CURRENT_USER "${UNINSTALL_REGISTRY_KEY}" "UninstallString"
+  ${EndIf}
+
+  ${If} $0 != ""
+    StrCpy $ztUpgrading "1"
+    ReadRegStr $ztUpVer SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion"
+    ReadRegStr $ztOldDir SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" "InstallLocation"
+    ${If} $ztOldDir == ""
+      StrCpy $ztOldDir "$INSTDIR"
+    ${EndIf}
+    ${zt.Log} "本次是升级：上一版登记为 $ztUpVer，装在 $ztOldDir；本次要装的目录是 $INSTDIR"
+  ${Else}
+    ${zt.Log} "本次是全新安装（注册表里没有旧的卸载登记项）"
+  ${EndIf}
 !macroend
 
 ; ---------------------------------------------------------------------------
@@ -247,36 +451,68 @@ Var /GLOBAL ztRc        ; 子进程退出码
     ${zt.Log} "安装前没有检测到纸团在运行"
 
   zt_chk_done:
+    ; 第 1 层：探问「要替换的那两个文件删得掉吗」。抢在旧卸载器动手之前——
+    ; 一旦开工，被占住的文件会连累搬走的那一半一起没掉（见 zt.Preflight）。
+    ; $ztUpgrading 由 customInit 在 .onInit 里置好（全新安装恒为 "0"）。
+    ;
+    ; 为什么全新安装不问：这一层与第 2 层守的都是**旧卸载器**那一段的破坏性
+    ; （它改名搬移，改不动就 Abort，搬走的一半随 $PLUGINSDIR 消失）。没有旧版时
+    ; uninstallOldVersion 读完注册表就直接返回，$INSTDIR 一个字节都不动，没有
+    ; 需要抢在谁前面拦的东西。于是「不是升级」时跳过，也让全新安装的路径与改
+    ; 之前**完全一致**。
+    ;
+    ; 这一段整个**只在安装器那一趟编译里存在**。卸载器那一趟也会把本宏插进
+    ; un.checkAppRunning（uninstaller.nsh 的 un.checkAppRunning 调它），但那一趟
+    ; 里 customInit 不会跑（installer.nsi 把它放在 !ifndef BUILD_UNINSTALLER 那一支），
+    ; 而且 $ztUpgrading/$ztHeld 与 zt.Preflight 本身也都圈在同一个守卫里——留着
+    ; 引用只会换来一句 6001「声明了没用到」，而构建带 -WX，那种警告会把构建打掉。
+    ; 探针 spike/nsis-abort-probe/hook-compile-un.nsi 就是为提前撞上这件事而存在的。
+    !ifndef BUILD_UNINSTALLER
+      ${If} $ztUpgrading == "1"
+        !insertmacro zt.Preflight chk
+      ${Else}
+        ${zt.Log} "本次不是升级，跳过动手前的探问（没有旧卸载器要抢在它前面）"
+      ${EndIf}
+    !endif
 !macroend
 
 ; ---------------------------------------------------------------------------
-; customUnInstallCheck —— 把「旧卸载器失败」从致命错误降级为「清场后继续」
+; customUnInstallCheck —— 旧卸载器失败之后的兜底：清场，然后**继续**安装
 ; （取代 installUtil.nsh 的 handleUninstallResult 里的
 ;   MessageBox + SetErrorLevel 2 + Quit，见该文件 108-134 行）
 ;
-; **外层判据是退出码，内层判据是残留。** 两个都要有：
+; **门闸是「本次是不是升级」（$ztUpgrading），不是旧卸载器的退出码。**
+; 这个文件原先拿 `$R0 != 0` 当门闸，而那扇门从来没开过：真机上连着三次升级，
+; 日志里都是「旧卸载器退出码 0」，尽管 $INSTDIR 里明明白白留着上一版的主程序
+; 与 app.asar（见文件头）。于是这一层「万一失败就清场」的兜底一次都没跑过，
+; 用户一直拿到「注册表写着新版本、主程序还是旧版」的混合安装。现在退出码只写
+; 进日志，判断改靠 customInit 记下的那个事实。
 ;
-; · 外层 `$R0 != 0` 不能去掉，它守的是**全新安装**。uninstallOldVersion 一开始
-;   就把 $R0 置 0（installUtil.nsh:152-153），找不到旧版就提前返回、$R0 仍是 0；
-;   而 handleUninstallResult 在**每一次**安装之后都会跑（installSection.nsh:53）。
-;   于是全新安装也会走到这里，而用户在全新安装时完全可能选一个**已存在、装着
-;   别的东西**的目录——那里面一个字节都不能动。把「旧卸载器自报失败」当作唯一
-;   入口，恰好也把全新安装整个排除在外了。
+; 为什么还要有这一层：第 1 层的探问与动手之间有窗口——探问时说删得掉，旧卸载器
+; 开跑的那一刻有东西插进来（同步盘、杀软实时扫描），一样会失败。第 1 层拦不住
+; 的，由这一层收拾。
 ;
-; · 内层不能只看「$INSTDIR 下有 zhituan.exe」。RMDir /r 是**尽力而为**的：被占住
-;   的那个文件删不掉，其余的照删不误——包括 zhituan.exe。所以一次失败的清场之后，
-;   留下来的往往正是「resources\app.asar 还在、主程序已经没了」这种形态，而它
-;   恰恰是最需要被认出来的那一种。改认**两处指纹任一**：主程序，或 app.asar。
+; 为什么清不掉也**不再** Quit：此刻旧卸载器已经把文件搬走了一半（$PLUGINSDIR
+; 里的那一半随它一起消失），Abort 会把用户留在「装了一半」上，比继续装更糟。
+; 继续把新文件铺上去，剩下没换掉的那几个（多半正是 app.asar）由**应用自己**
+; 如实报出来——应用比安装程序更能把这件事说清楚（它一边读得到注册表登记的
+; 版本号，一边读得到自己的版本，见 README 的更新那一节）。所以这里不再挡第二次。
 ;
-; 末尾 ClearErrors：我们提前 Return 走了，绕过了原生那句 IfErrors，得把
-; 错误标志清掉，免得影响后面的步骤。
+; 内层判据是**两处指纹任一**：主程序，或 resources\app.asar。不能只看主程序——
+; RMDir /r 是尽力而为的，被占住的那个删不掉、其余的照删不误，所以一次失败的
+; 清场之后留下的往往正是「app.asar 还在、主程序已经没了」这种形态，而它恰恰
+; 是最需要被认出来的那一种。
+;
+; 末尾 ClearErrors：我们提前 Return 走了（handleUninstallResult 里紧跟一条
+; Return），绕过了原生那句 IfErrors，得把错误标志清掉，免得影响后面的步骤。
 ; ---------------------------------------------------------------------------
 !macro customUnInstallCheck
   ; $R0 里是旧卸载器的退出码。这一段会调下面几个宏，而它们都会写寄存器，
-  ; 所以先把它压栈护住，收尾再放回去。
+  ; 所以先把它压栈护住、收尾再放回去——只为不破坏 handleUninstallResult 的
+  ; 上下文，本层已经不拿它做任何判断了。
   Push $R0
-  ${zt.Log} "旧卸载器退出码 $R0"
-  ${If} $R0 != "0"
+  ${zt.Log} "旧卸载器退出码 $R0（只作记录，不参与判断）"
+  ${If} $ztUpgrading == "1"
     ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
     ${OrIf} ${FileExists} "$INSTDIR\resources\app.asar"
       ${zt.Log} "旧卸载器没能清干净 $INSTDIR，改为强制清场后继续覆盖安装"
@@ -290,23 +526,18 @@ Var /GLOBAL ztRc        ; 子进程退出码
         !insertmacro zt.KillApp unc2
         !insertmacro zt.RmDirRetry unc2 "$INSTDIR" 12
       ${EndIf}
-      ; 还是清不掉就不能装作没事。接着往下走的话，File 解压会把新文件铺在
-      ; 旧文件旁边，被占住的那几个（多半正是 app.asar）留在原地——用户拿到
-      ; 的是一份「注册表写着新版本、app.asar 还是旧的」的混合安装，比直接失败
-      ; 更难查，而且下一次检查更新会再来一遍。这里如实停下，并把该做什么说清楚。
-      ; 这个框**故意不带 /SD**：静默升级下它照样要弹出来（当初用户看到的那条
-      ; 「应用关了、然后什么都没有」，正是「静默 + 什么都不说」的后果）。
+      ; 两轮之后还是清不净也不再挡：理由见上面那段注释。这一版之后由应用自己
+      ; 把「文件没换掉」如实说出来，而不是让安装程序在这里留下一个装了一半的摊子。
       ${If} ${FileExists} "$INSTDIR\*.*"
-        ${zt.Log} "清不掉 $INSTDIR，停下并如实报错"
-        MessageBox MB_OK|MB_ICONEXCLAMATION \
-          "升级没能替换掉旧文件：$\r$\n$INSTDIR 里有文件正被别的程序占用。$\r$\n$\r$\n关闭网盘同步、杀毒软件实时扫描这类程序（或暂时暂停它们），再运行一次安装程序即可。"
-        SetErrorLevel 2
-        Quit
+        ${zt.Log} "清不掉 $INSTDIR（第 1 层没拦住、这里也没清掉），仍继续覆盖安装，剩下的交给应用自己报"
+      ${Else}
+        ${zt.Log} "$INSTDIR 已清空，继续覆盖安装"
       ${EndIf}
-      ${zt.Log} "$INSTDIR 已清空，继续覆盖安装"
     ${Else}
       ${zt.Log} "$INSTDIR 下没有上一版的残留（主程序与 resources\app.asar 都不在），不动它，直接继续安装"
     ${EndIf}
+  ${Else}
+    ${zt.Log} "本次不是升级，不动 $INSTDIR，直接继续安装"
   ${EndIf}
   Pop $R0
   ClearErrors
@@ -321,13 +552,13 @@ Var /GLOBAL ztRc        ; 子进程退出码
 ;     搬走的文件在 $PLUGINSDIR 里、随进程一起没，等于把安装毁掉一半）；
 ;   · 下一版安装器调用本版卸载器时，走的是「收进程 → 带重试地直接删」。
 ;
-; **删不干净时必须以非 0 退出，这一句不能省。** 原版那段的行为是
-; `Abort "Can't rename ..."`——NSIS 的 Abort 会把退出码置 2，安装器据此
-; 走「旧卸载器失败」那条路（customUnInstallCheck）。换成安静地删之后，
-; 退出码就默认是 0，而 0 的语义是「目录清干净了」：安装器于是把新文件直接
-; 铺上去，被占住的那几个（多半正是 resources\app.asar）留在原地，用户拿到的
-; 是一份「注册表写着新版本、app.asar 还是旧的」的混合安装——比失败更难查，
-; 而且下一次检查更新会原样再来一遍。所以这里把信号还回去：还剩东西就报 2。
+; 删不干净时报 2，是**把信号还回去**，不是让安装器据此做判断——这两件事这一版
+; 起分开了，值得写清楚。原版那段的行为是 `Abort "Can't rename ..."`，NSIS 的
+; Abort 会把退出码置 2；而安装器那一侧现在的门闸已经换成「本次是不是升级」
+; （customUnInstallCheck，理由见文件头），退出码只进日志。所以报 2 的意义变成了：
+; 「这是卸载没做干净」这个事实得留在进程边界上——批处理、企业静默部署脚本、
+; 以及以后可能出现的别的调用方都看得到它，而不是被我们悄悄改成 0（0 的语义是
+; 「目录清干净了」，那是说谎）。
 ;
 ; 只在升级时报（${isUpdated}）：普通卸载走的是另一条路，它没有人来接这个
 ; 退出码，报错了只会让「卸载没卸干净」这件事变得没有落点——那一种留个日志
@@ -340,7 +571,7 @@ Var /GLOBAL ztRc        ; 子进程退出码
   !insertmacro zt.RmDirRetry unrm "$INSTDIR" 12
   ${If} ${FileExists} "$INSTDIR\*.*"
     ${If} ${isUpdated}
-      ${zt.Log} "[unrm] $INSTDIR 没删净，按原约定报 2，交给安装器清场"
+      ${zt.Log} "[unrm] $INSTDIR 没删净，按原约定报 2；剩下的交给下一版安装器自己清"
       SetErrorLevel 2
     ${Else}
       ${zt.Log} "[unrm] $INSTDIR 没删净（普通卸载，不改退出码，留几个文件）"

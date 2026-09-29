@@ -544,6 +544,19 @@ export const PERSIST_DEBOUNCE_MS = 300
 export const UPDATE_FEED_BASE = 'https://github.com/m4xlmum/zhituan'
 
 /**
+ * 打包用的 appId，与 electron-builder.yml 里那一行是同一个事实。
+ *
+ * 写在代码里是因为它**运行时也算得出一件东西**：安装器把它登记的安装信息写在
+ * 注册表里，键名是 appId 的 UUID v5（见 main/services/installRegistry.ts）。要问
+ * 「这台机器上登记的版本，是不是比我正跑着的这一份新」，就得先算得出那把键。
+ *
+ * 跟 UPDATE_FEED_BASE 同一个理由不随构建环境漂：它是产品事实。改这里忘改
+ * electron-builder.yml（或反过来）会在探针上直接报出来——spike/update-check.js
+ * 的 Q14 会读一遍那两处并比对。
+ */
+export const APP_ID = 'com.m4xlmum.zhituan'
+
+/**
  * 启动后多久才去查（毫秒）。
  *
  * 两个理由，都与「别打扰」有关：一是别和启动那一堆活（恢复标签页、重建托盘、

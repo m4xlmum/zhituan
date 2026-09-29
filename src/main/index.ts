@@ -5,11 +5,11 @@
  */
 import { app, BrowserWindow, type Session } from 'electron'
 import { cpSync, existsSync, renameSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { BROADCAST } from '@shared/ipc'
 import type { OpenPopoverRequest } from '@shared/ipc'
-import { QUIT_WATCHDOG_MS, UPDATE_CHECK_DELAY_MS, UPDATE_FEED_BASE } from '@shared/constants'
+import { APP_ID, QUIT_WATCHDOG_MS, UPDATE_CHECK_DELAY_MS, UPDATE_FEED_BASE } from '@shared/constants'
 import type { Rect } from '@shared/types'
 import type { AppContext } from './context'
 import { registerBrowserIpc } from './ipc/registerBrowserIpc'
@@ -22,6 +22,7 @@ import { BallIconStore } from './services/ballIconStore'
 import { BossKeyService } from './services/bossKeyService'
 import { ConfigStore } from './services/configStore'
 import { HistoryStore } from './services/historyStore'
+import { detectMixedInstall } from './services/installRegistry'
 import { initLogger, log } from './services/logger'
 import { PopoverWindowService } from './services/popoverWindow'
 import {
@@ -345,6 +346,11 @@ function bootstrap(): void {
   const updateEnabled = app.isPackaged
   /** 启动后那一次静默检查的定时器，见 whenReady 末尾 */
   let updateTimer: NodeJS.Timeout | null = null
+  /**
+   * 正在跑的这个 exe 在哪个目录 / 版本号是多少。两处都要用：更新服务拿版本号去
+   * 比对发布页，mixedInstall 那条拿目录去跟注册表里登记的安装位置对齐。
+   */
+  const runningExe = app.getPath('exe')
   const update = new UpdateService({
     config,
     feedBase: UPDATE_FEED_BASE,
@@ -353,7 +359,15 @@ function bootstrap(): void {
     downloadDir: join(app.getPath('temp'), 'zhituan-update'),
     onState: (state) => broadcast(BROADCAST.updateState, state),
     setNoticeVisible: (visible) => controller.setNoticeVisible(visible),
-    quit: () => quit()
+    quit: () => quit(),
+    // 读注册表问「上一次的更新到底落地了没有」（见 installRegistry）。
+    // enabled 为假（开发模式）时服务自己不会问，这里不必再判一次
+    mixedInstall: () =>
+      detectMixedInstall({
+        appId: APP_ID,
+        runningVersion: app.getVersion(),
+        runningDir: dirname(runningExe)
+      })
   })
 
   const ctx: AppContext = {
@@ -447,6 +461,15 @@ function bootstrap(): void {
         void update.check()
       }, UPDATE_CHECK_DELAY_MS)
     }
+
+    /*
+     * 另一件事，不走上面那个开关、也不等那二十秒：本机**登记**的安装版本是不是
+     * 比正在跑的这一份新（见 updateService.refreshMixedInstall）。
+     *
+     * 它是本地的一个事实，不联网、也跟「要不要自动检查」无关——上一次更新没落地
+     * 的时候，用户最需要看到的就是这一句，而它必须在他打开窗口的那一下就说得出来。
+     */
+    void update.refreshMixedInstall()
 
     // explorer.exe 重启会带走托盘图标，而 Electron 没有任务栏重建事件。
     // 在每次显示窗口时重建一次，成本很低；托盘没了用户可能再也找不回窗口。

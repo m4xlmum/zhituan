@@ -108,11 +108,18 @@ const updateEnabled = computed(() => update.value?.enabled ?? false)
  *
  * 下载中分了两种说法：按过「更新并重启」的，要说清楚剩下的那段时间**不用他再
  * 管**——这正是这一版改的东西。
+ *
+ * 「上一次的更新没装成」（mixedInstall）压过上面每一句，且把两个版本号都摆出来
+ * ——它是这一版新加的那句实话（见 UpdateState.mixedInstall），而设置页正是用户
+ * 会来对账的地方：「我装的是 1.6.7，它跑的是 1.6.6」这句话得他自己看得见。
  */
 const updateStatus = computed(() => {
   const s = update.value
   if (!s) return '读取中…'
   if (!s.enabled) return '开发模式下不检查更新'
+  if (s.mixedInstall !== null) {
+    return `上次更新没装成：本机登记的是 ${s.mixedInstall}，正在跑的却是 ${s.currentVersion}。重启电脑后再点一次「更新并重启」`
+  }
   switch (s.phase) {
     case 'checking':
       return '正在检查…'

@@ -42,6 +42,10 @@ spike/out/
 # 探针的编译产物：.nsi / .py 是源码，留下；makensis 打出来的 .exe 是本机跑一次
 # 就有的东西（几十 KB 一个），没有版本意义，也不该跟着仓库走。
 spike/**/*.exe
+# 探针自己搭出来的现场（preflight 的 fixture 目录）与写出来的读数文件：每次跑都会
+# 重新生成，check_round.py 断言的就是「这一趟跑完长什么样」，留着只会让状态一直脏。
+spike/nsis-abort-probe/pf-fixture/
+spike/nsis-abort-probe/*.txt
 
 # 评审截图：是过程证据，不是产物，体积也大
 .impeccable/review/

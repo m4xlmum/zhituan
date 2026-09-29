@@ -33,6 +33,10 @@
  *     发（用 HTTP 服务器的计数证明，不是看返回值），而手动 check({manual:true}) 照发。
  *   - **已经下过的那一份会被认出来**：再查一次直接 ready，不重下 111MB。
  *   - **广播不许刷屏**：进度只在整数百分比变化时才发一次，总数 ≤ 101。
+ *   - **上一次的更新没装成时，应用自己说得出来**（Q15）：注册表登记的版本比正在
+ *     跑的这一版新（1.6.6 那次事故留在用户机器上的形态，见 build/installer.nsh），
+ *     界面就得说得出这句话——哪怕源上一个已知新版本都没有；而读不出来、没给这个
+ *     探问、探问自己抛异常这三条路上必须**一个字都不说**（错的方向只能是漏报）。
  *
  * 用的是**真的** UpdateService / ConfigStore / version.ts（esbuild 打成一包再
  * require，见 buildModules），配置写在临时目录里，绝不碰用户那一份。HTTP 服务器
@@ -54,6 +58,7 @@ const fs = require('node:fs')
 const http = require('node:http')
 const os = require('node:os')
 const path = require('node:path')
+const { execFileSync } = require('node:child_process')
 
 const ROOT = path.join(__dirname, '..')
 const OUT_DIR = path.join(__dirname, 'out')
@@ -103,6 +108,7 @@ async function buildModules() {
     entryPoints: [
       path.join(ROOT, 'src', 'main', 'services', 'updateService.ts'),
       path.join(ROOT, 'src', 'main', 'services', 'configStore.ts'),
+      path.join(ROOT, 'src', 'main', 'services', 'installRegistry.ts'),
       path.join(ROOT, 'src', 'shared', 'version.ts'),
       path.join(ROOT, 'src', 'shared', 'constants.ts')
     ],
@@ -120,6 +126,7 @@ async function buildModules() {
   return {
     updateService: require(at('main', 'services', 'updateService.cjs')),
     configStore: require(at('main', 'services', 'configStore.cjs')),
+    installRegistry: require(at('main', 'services', 'installRegistry.cjs')),
     version: require(at('shared', 'version.cjs')),
     constants: require(at('shared', 'constants.cjs'))
   }
@@ -129,6 +136,39 @@ async function buildModules() {
 
 const assetName = (version) => `zhituan-${version}-x64.exe`
 const sha512 = (buf) => crypto.createHash('sha512').update(buf).digest('base64')
+
+/**
+ * 装好的那个可执行文件叫什么。electron-builder.yml 开头那条注释定下的事：
+ * productName 是中文，可执行文件名保持 ASCII，真机上就是 `zhituan.exe`
+ * （注册表里的 DisplayIcon 也是这么写的）。
+ */
+const EXE_NAME = 'zhituan'
+
+/**
+ * 登记目录里那个 exe **自己的**文件版本（PE 版本资源里的 FileVersion）。
+ *
+ * 用 PowerShell 读是因为 Node 没有现成的办法读 PE 的版本资源。这个数只做读数用
+ * （见 Q15 的 detail），不参与断言：读不到——文件不在、PowerShell 起不来、输出
+ * 不合形状——一律返回 null。
+ */
+function installedExeVersion(exe) {
+  try {
+    const out = execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `(Get-Item -LiteralPath '${exe}').VersionInfo.FileVersion`
+      ],
+      { encoding: 'utf8', timeout: 15000, windowsHide: true }
+    )
+    const value = out.trim()
+    return /\d+\.\d+/.test(value) ? value : null
+  } catch {
+    return null
+  }
+}
 
 /** electron-builder 写出来的那一份形状，逐行照抄 */
 function manifestText(version, sha, size) {
@@ -226,7 +266,10 @@ function makeStage(mods, options) {
       spawns.push({ file, args, spawnOpts, child })
       return child
     },
-    spawnGraceMs: 0
+    spawnGraceMs: 0,
+    // 「本机登记的是哪一版」这一问由 options.mixedInstall 给：不给就是不问
+    // （真机那一侧由 Q15 直接读一次真注册表来对），给了就当作那一句回答
+    mixedInstall: options.mixedInstall
   })
 
   const inflight = new Set()
@@ -261,7 +304,8 @@ function makeStage(mods, options) {
 const tick = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
- * 提示条每一次拨动，是否正好等于「那一刻有一个已知的新版本、且没被忽略」。
+ * 提示条每一次拨动，是否正好等于「那一刻有一个已知的新版本、且没被忽略」，
+ * **或者**「本机登记的版本比正在跑的这一版新」（mixedInstall，见 UpdateState）。
  *
  * 主进程 setState 里这两件事是同一行代码的两个动作（先广播、再拨条），因此
  * 两份记录的下标天然对齐。对齐着比，才能验出「状态对了、条没跟上」这类不对称
@@ -274,10 +318,10 @@ function noticePairs(stage) {
   }
   for (let i = 0; i < Math.min(stage.events.length, stage.notices.length); i += 1) {
     const e = stage.events[i]
-    const want = e.version !== null && !e.ignored
+    const want = (e.version !== null && !e.ignored) || e.mixedInstall !== null
     if (stage.notices[i] !== want) {
       bad.push(
-        `第 ${i + 1} 次：状态 ${e.phase}/${e.version ?? '—'}${e.ignored ? '（已忽略）' : ''} 该拨 ${want}，实拨 ${stage.notices[i]}`
+        `第 ${i + 1} 次：状态 ${e.phase}/${e.version ?? '—'}${e.ignored ? '（已忽略）' : ''}${e.mixedInstall ? `（登记着 ${e.mixedInstall}）` : ''} 该拨 ${want}，实拨 ${stage.notices[i]}`
       )
     }
   }
@@ -879,6 +923,184 @@ async function main() {
       phaseAfterDeath: s1.phase,
       message: s1.message
     })
+  }
+
+  // ------------------------------------------------------------ Q15 混合安装：上一次的更新没装成
+
+  {
+    /*
+     * 用户报的那句话是「点了更新并重启，只会重启，并没有成功更新」。真机上的形态
+     * 是**混合安装**：注册表写着 1.6.7，磁盘上的 zhituan.exe 还是 1.6.6（app.asar
+     * 被一个退不掉的进程占着，安装器一个字节都没换掉）。安装器那一侧的修法在
+     * build/installer.nsh（动手前探问、拦下、说清楚）；这一问验的是应用这一侧：
+     * 它得说得出同一件事，否则界面会一直按「版本号 = 注册表」那个假话说话。
+     *
+     * 四段：算法与真机读数（GUID 算得对不对、本机到底登记着哪一版）、判据的
+     * 七种组合、这件事进来之后状态与提示条变成什么样、以及三条「不许说话」的
+     * 路（读不出来 / 没给这个探问 / 探问自己抛异常）——**错的方向只能是漏报**。
+     */
+    const { appGuidOf, mixedInstallOf, readRegisteredInstall, parseRegValue } = mods.installRegistry
+    const bad = []
+
+    // ① GUID：与 electron-builder 同一套算法，而且常量与 yml 得是同一个事实
+    const yml = fs.readFileSync(path.join(ROOT, 'electron-builder.yml'), 'utf8')
+    const appIdInYml = (/^\s*appId:\s*(\S+)\s*$/m.exec(yml) ?? [])[1] ?? null
+    if (appIdInYml === null) bad.push('electron-builder.yml 里没读到 appId')
+    else if (appIdInYml !== mods.constants.APP_ID) {
+      bad.push(
+        `constants.APP_ID 是 ${mods.constants.APP_ID}，electron-builder.yml 里是 ${appIdInYml}——两处必须是同一个事实（注册表键名由它算出来）`
+      )
+    }
+    const guid = appGuidOf(mods.constants.APP_ID)
+    if (guid !== '3437b4c4-5fc0-5612-8fed-0aba488ce0e5') {
+      bad.push(`appId 算出来的 GUID 是 ${guid}，与真机上那两把键名（3437b4c4-…）对不上`)
+    }
+
+    // ② reg query 的输出解析（真机上那一行长这样：`    DisplayVersion    REG_SZ    1.6.7`）
+    const oneLine = parseRegValue('    DisplayVersion    REG_SZ    1.6.7\r\n', 'DisplayVersion')
+    if (oneLine !== '1.6.7') bad.push(`reg query 那一行解析出来是 ${JSON.stringify(oneLine)}，该是 "1.6.7"`)
+    const withSpace = parseRegValue('    InstallLocation    REG_SZ    C:\\a b\\c\r\n', 'InstallLocation')
+    if (withSpace !== 'C:\\a b\\c') bad.push(`值里有空格时该原样取出来，实为 ${JSON.stringify(withSpace)}`)
+
+    // ③ 判据本身：能说的那一种，与五种不说的
+    const cases = [
+      [{ runningVersion: '1.6.6', runningDir: 'C:\\app', registered: { version: '1.6.7', dir: 'C:\\app' } }, '1.6.7', '同一个目录、登记的新'],
+      [{ runningVersion: '1.6.7', runningDir: 'C:\\app', registered: { version: '1.6.7', dir: 'C:\\app' } }, null, '同一个目录、版本一样'],
+      [{ runningVersion: '1.6.7', runningDir: 'C:\\app', registered: { version: '1.6.6', dir: 'C:\\app' } }, null, '同一个目录、登记的还旧'],
+      [{ runningVersion: '1.6.6', runningDir: 'C:\\app', registered: { version: '1.6.7', dir: 'C:\\other' } }, null, '不是同一个目录'],
+      [{ runningVersion: '1.6.6', runningDir: 'C:\\app', registered: { version: '1.6.7', dir: null } }, null, '目录读不出来'],
+      [{ runningVersion: '1.6.6', runningDir: 'C:\\app', registered: null }, null, '本机没有登记项'],
+      [{ runningVersion: '1.6.6', runningDir: 'C:\\App', registered: { version: '1.6.7', dir: 'c:\\app' } }, '1.6.7', '大小写不同仍算同一个目录']
+    ]
+    for (const [input, want, why] of cases) {
+      const got = mixedInstallOf(input)
+      if (got !== want) bad.push(`${why}：算出 ${got}，该是 ${want}`)
+    }
+
+    /*
+     * ④ 真机读数 + 交叉验证。
+     *
+     * 「本机到底登记着哪一版」用另一条路再问一遍：探针自己起一次 reg.exe 直接查
+     * 那把键。键在而模块读不出来 = 模块坏了（而不是「本机没装」），所以这一条
+     * 能当真断言用。再顺手读一次登记目录里那个 exe 自己的文件版本——两个数一
+     * 摆，「这台机器是不是正处在混合安装上」就是看得见的读数（用户报的那台机器
+     * 上，登记 1.6.7 而 exe 是 1.6.6）。
+     */
+    const installKey = `HKCU\\Software\\${guid}`
+    let rawHasKey = false
+    try {
+      rawHasKey = /InstallLocation/.test(
+        execFileSync('reg.exe', ['query', installKey], { encoding: 'utf8', windowsHide: true })
+      )
+    } catch {
+      rawHasKey = false
+    }
+    const real = await readRegisteredInstall(mods.constants.APP_ID)
+    if (rawHasKey) {
+      if (real === null) bad.push(`注册表里 ${installKey} 在，模块却读不出来——读注册表那一段坏了`)
+      else {
+        if (!/^\d+\.\d+/.test(real.version)) bad.push(`读到的版本号是 ${real.version}，不像个版本号`)
+        if (real.dir === null) bad.push('读到了版本号却读不出安装目录——那 mixedInstall 永远不会触发')
+      }
+    } else {
+      step('本机 HKCU 下没有安装登记项，这一问的真机读数跳过（其它几条照验）')
+    }
+    // 登记目录里那个 exe 自己的文件版本。读不到（没装、PowerShell 起不来）就是 null
+    const exeVersion = real?.dir ? installedExeVersion(path.join(real.dir, `${EXE_NAME}.exe`)) : null
+    const hereMixed =
+      real === null || real.dir === null || exeVersion === null
+        ? null
+        : mixedInstallOf({
+            runningVersion: exeVersion,
+            runningDir: real.dir,
+            registered: real
+          })
+
+    /*
+     * ⑤ 这件事进来之后，状态与提示条变成什么样。
+     *
+     * 关键是「一个已知新版本都没有」时那一行也得出现：源上就是当前版本（phase
+     * none、version null），而本机登记着更高的版本——用户此刻要的答案恰恰是
+     * 「为什么我更新了却没变」，不是「已是最新」。
+     */
+    const mixedStage = makeStage(mods, {
+      configDir: tmpDir('config'),
+      downloadDir: tmpDir('dl'),
+      feedBase: base,
+      currentVersion: '1.0.0',
+      mixedInstall: async () => '1.0.1'
+    })
+    state.manifest = manifestText('1.0.0', sha, asset.length)
+    const none = await mixedStage.service.check()
+    if (none.phase !== 'none') bad.push(`源上就是当前版本时 phase 是 ${none.phase}，该是 none`)
+    if (none.version !== null) bad.push('没有新版本时 version 该是 null')
+    if (none.mixedInstall !== '1.0.1') {
+      bad.push(`mixedInstall 该是 1.0.1（本机登记的那一版），实为 ${none.mixedInstall}`)
+    }
+    if (mixedStage.notices[mixedStage.notices.length - 1] !== true) {
+      bad.push('本机登记着更高的版本时，提示条必须出现——哪怕源上一个已知新版本都没有')
+    }
+    for (const problem of noticePairs(mixedStage)) bad.push(problem)
+
+    // ⑥ 三条「不许说话」的路：不给这个探问、探问抛异常、开发模式（enabled 为假）
+    let asked = 0
+    const quietStage = makeStage(mods, {
+      configDir: tmpDir('config'),
+      downloadDir: tmpDir('dl'),
+      feedBase: base,
+      currentVersion: '1.0.0'
+    })
+    const errStage = makeStage(mods, {
+      configDir: tmpDir('config'),
+      downloadDir: tmpDir('dl'),
+      feedBase: base,
+      currentVersion: '1.0.0',
+      mixedInstall: async () => {
+        asked += 1
+        throw new Error('注册表读不出来')
+      }
+    })
+    const offStage = makeStage(mods, {
+      configDir: tmpDir('config'),
+      downloadDir: tmpDir('dl'),
+      feedBase: base,
+      currentVersion: '1.0.0',
+      enabled: false,
+      mixedInstall: async () => {
+        asked += 1
+        return '9.9.9'
+      }
+    })
+    state.manifest = manifestText('1.0.0', sha, asset.length)
+    const quiet = await quietStage.service.check()
+    if (quiet.mixedInstall !== null) bad.push(`没给这个探问时 mixedInstall 该是 null，实为 ${quiet.mixedInstall}`)
+    if (quietStage.notices.some((v) => v === true)) {
+      bad.push('没有新版本、也没有登记差异时，提示条一次都不该被拨出来')
+    }
+    const errored = await errStage.service.check()
+    if (errored.phase !== 'none') {
+      bad.push(`读注册表抛异常时 phase 是 ${errored.phase}——那是另一件事，不该被记成更新失败`)
+    }
+    if (errored.mixedInstall !== null) bad.push('探问抛异常时该当作「不知道」，不许把异常当成一个版本号')
+    if (errStage.notices.some((v) => v === true)) bad.push('探问抛异常时不许把提示条叫出来')
+    const off = await offStage.service.refreshMixedInstall()
+    if (off.mixedInstall !== null) bad.push('开发模式（enabled 为假）下不该有登记差异')
+    if (asked !== 1) bad.push(`关掉的那一趟也问了 ${asked} 次（该只问抛异常那一次）——不联网的地方也不该读注册表`)
+
+    check(
+      'Q15',
+      '上一次的更新没装成（注册表写着新版、文件还是旧版）：应用自己说得出来，说不出来时一律沉默',
+      bad,
+      {
+        registered: real === null ? '读不到' : `${real.version} @ ${real.dir ?? '（目录读不出来）'}`,
+        guid,
+        installKeyThere: rawHasKey,
+        // 本机现状的读数：登记着 A 版、那个 exe 自己是 B 版 → 算出来就是应用会说出口的那一版
+        installedExe: exeVersion,
+        mixedOnThisMachine: hereMixed ?? '不是混合安装',
+        noticeWhenMixed: mixedStage.notices
+      }
+    )
   }
 
   // ------------------------------------------------------------ Q14 真地址（--net）
