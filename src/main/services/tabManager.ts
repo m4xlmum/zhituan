@@ -11,17 +11,20 @@
  * - **本机 EPUB 的阅读页**（kind = 'book'）：与上一条同构、同一条账——`viewUrl`
  *   指向自家书页，对外露的仍是那个 `.epub`。差别只在谁来拆书：见
  *   services/bookReader.ts（解包是主进程的活，排版是页面自己的活）。
+ * - **本机 TXT 的阅读页**（kind = 'txt'）：同上第三条账，`viewUrl` 指向自家那一页，
+ *   对外露的仍是那个 `.txt`。差别在它连解析都不在主进程：那一页自己认编码、自己切章
+ *   （见 services/txtReader.ts 与 @shared/txt.ts），而「读到哪一章了」也由它报回来。
  * - **自家的两屏**（起始页、系统设置）：也在这一层视图里（独立窗口会进任务栏与
  *   Alt+Tab，等于把「我在摸鱼」写在脸上），但**不是标签页**——不进 `order`、
  *   没有关闭键、各有各的入口（两者是顶栏最左并排的两颗键：起始页、设置）。
  *
- * 四者共用同一套机制（视图、可见性、版面、广播），差别只在上面那本账：
- * **进标签条的是前三种**（isTab），**带 preload 的除了访客页都有**（needsPreload
+ * 五者共用同一套机制（视图、可见性、版面、广播），差别只在上面那本账：
+ * **进标签条的是前四种**（isTab），**带 preload 的除了访客页都有**（needsPreload
  * 就是 `kind !== 'guest'`）——这两条判据在这一版之前是同一条（「不是访客页」），
  * 本机 PDF 一来就分家了。
  *
- * **kind 只在 create() 一处判**（本机 PDF / 本机 EPUB / 其余），四种入口——会话
- * 恢复、选文件框、网页里点一个 file: 链接、地址栏粘路径——都从那一条过。
+ * **kind 只在 create() 一处判**（本机 PDF / 本机 EPUB / 本机 TXT / 其余），四种入口
+ * ——会话恢复、选文件框、网页里点一个 file: 链接、地址栏粘路径——都从那一条过。
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -41,20 +44,21 @@ import {
 } from '@shared/constants'
 import type { TabsStatePayload } from '@shared/ipc'
 import type { OwnScreen, Rect, TabState } from '@shared/types'
-import { fileNameOf, isLocalEpub, isLocalFile, isLocalPdf, resolveInput } from '@shared/url'
+import { fileNameOf, isLocalEpub, isLocalFile, isLocalPdf, isLocalTxt, resolveInput } from '@shared/url'
 import { uaFor, type UaMode } from '@shared/ua'
 import { applyReaderOpacity, applyReaderTypeset, injectPageStyles } from './pageStyler'
 import { bookReaderUrl } from './bookReader'
+import { txtReaderUrl } from './txtReader'
 import { pdfReaderUrl } from './pdfReader'
 import { rendererUrl } from './rendererUrl'
 import { log } from './logger'
 
 /**
  * 自家页面（带 preload，以伪地址示人）、网页（纯网页，无 preload）、
- * 本机文件的两个阅读页（自家的一页，画在标签条上）。
- * 访客页绝不与另外两类共用视图：给访客页注入 preload 等于把主进程能力交给任意网页。
+ * 本机文件的三个阅读页（自家的一页，画在标签条上）。
+ * 访客页绝不与另外几类共用视图：给访客页注入 preload 等于把主进程能力交给任意网页。
  */
-export type TabKind = 'home' | 'settings' | 'guest' | 'pdf' | 'book'
+export type TabKind = 'home' | 'settings' | 'guest' | 'pdf' | 'book' | 'txt'
 
 /** 自家页面：渲染产物名、对外伪地址与标签标题 */
 const OWN_PAGE: Record<OwnScreen, { page: 'home' | 'settings'; url: string; title: string }> = {
@@ -69,9 +73,9 @@ const isScreen = (kind: TabKind): kind is OwnScreen => kind === 'home' || kind =
 const isTab = (kind: TabKind): boolean => !isScreen(kind)
 
 /**
- * 带 preload 的视图：自家那两屏，加两个阅读页（本机 PDF 与本机 EPUB）。
+ * 带 preload 的视图：自家那两屏，加三个阅读页（本机 PDF / EPUB / TXT）。
  *
- * 两个阅读页都要读配置——主题决定墨色，阅读透明度决定纸的深浅——因此它们与自家
+ * 三个阅读页都要读配置——主题决定墨色，阅读透明度决定纸的深浅——因此它们与自家
  * 那两屏一样需要那座桥；网页则一律没有。
  */
 const needsPreload = (kind: TabKind): boolean => kind !== 'guest'
@@ -131,8 +135,9 @@ interface TabEntry {
   /**
    * 视图里实际加载的地址，**只在它与 `url` 不同的时候**才有值。
    *
-   * 今天只有本机 PDF 用它：对外它是一个本机文件，视图里却是自家的阅读页
-   * （`file:///…/pdf.html?doc=<token>`）。为它单开一个字段，而不是把 `url`
+   * 本机文件那三种阅读页（PDF / EPUB / TXT）都用它：对外是一个本机文件，视图里却是
+   * 自家的阅读页（`file:///…/book.html?doc=<token>` 或 `…/txt.html?doc=<token>`）。
+   * 为它单开一个字段，而不是把 `url`
    * 改成阅读页的地址，是因为那份地址不是「这本书在哪儿」——写进历史、
    * 写进会话恢复、写进地址栏都会把内部结构泄到界面上，且下次启动恢复不了
    * （token 是这次进程里现发的）。
@@ -150,7 +155,7 @@ export interface TabManagerDeps {
   getWindow: () => BaseWindow | null
   getBodyRect: () => Rect
   getSession: () => Session
-  /** 自家那两屏与本机 PDF 的阅读页都要 preload：前者读站点/历史，后者读配置 */
+  /** 自家那两屏与三个阅读页都要 preload：前者读站点/历史，后者读配置 */
   getPreloadPath: () => string
   getConfig: () => {
     browser: {
@@ -167,10 +172,11 @@ export interface TabManagerDeps {
       /**
        * 离线阅读的排版三项（字号 / 行距 / 左右留白）。
        *
-       * 与上面那一条同一个去处、同一个时机：本机 TXT 那一页是 Chromium 自己
-       * 排的，它的排版只能由主进程往那个 `pre` 上写（见 pageStyler 的
-       * applyReaderTypeset）。本机 EPUB 那一页不吃这三项——它自己从配置里读
-       * （book/BookApp.vue），所以那一条路不经过这里。
+       * 与上面那一条同一个去处、同一个时机，但**吃到它的东西分两种**：
+       * Chromium 自己排的纯文本（`.md`、`.log` 这一类）只能由主进程往那个 `pre`
+       * 上写（见 pageStyler 的 applyReaderTypeset）；本机 EPUB 与 TXT 那两页不吃
+       * 这一条——它们自己从配置里读（book/BookApp.vue 与 txt/TxtApp.vue），
+       * 于是那条路不经过这里。
        */
       readerFontSize: number
       readerLineHeight: number
@@ -283,6 +289,23 @@ export class TabManager {
   }
 
   /**
+   * 这一份 webContents 是不是此刻画着的那一个。
+   *
+   * 阅读页拿它判「这一笔位置算不算数」（见 ipc/registerFileIpc.ts 的 bookReading）。
+   * 同一本书开了两屏时，后台那一屏也会报位置——它换一次排版、被重新摆一次、
+   * 自己那一次补位落定，都会发一串滚动事件，于是**它那一份位置会盖到用户正在读的
+   * 那一屏头上**：用户在这一屏读到第 200 章，另一屏还停在开屏时的第 11 章，
+   * 下一次打开就回到第 11 章——正是「记不住读到哪儿」这句话。
+   *
+   * 判的是**视图**而不是标签页 id：报告人手里只有自己的 webContents（见那条
+   * IPC 的形状），而「谁在上面」这件事只有这一处记着。
+   */
+  isActiveView(sender: WebContents): boolean {
+    const entry = this.activeId ? this.tabs.get(this.activeId) : null
+    return entry ? entry.view.webContents === sender : false
+  }
+
+  /**
    * 一份对外快照。
    *
    * 广播（index.ts）与 `tabs:list` 这两个出口共用它，省得两处各拼一份、
@@ -337,13 +360,20 @@ export class TabManager {
 
     const cfg = this.deps.getConfig().browser
     /*
-     * 「这个地址该开成哪一路」只有这一处判：本机 PDF 与本机 EPUB 各开成自家的
+     * 「这个地址该开成哪一路」只有这一处判：本机 PDF / EPUB / TXT 各开成自家的
      * 阅读页，其余一律是普通网页。会话恢复（启动时把上次那些地址逐一 create）、
      * 选文件框、网页里点一个 file:// 的链接、地址栏里粘进来的路径——四条路都从
      * 这里过，谁也不必各自记着这条规矩（少一处判就少一处漏判）。
      */
     let kind: TabKind =
-      input.kind ?? (isLocalPdf(input.url) ? 'pdf' : isLocalEpub(input.url) ? 'book' : 'guest')
+      input.kind ??
+      (isLocalPdf(input.url)
+        ? 'pdf'
+        : isLocalEpub(input.url)
+          ? 'book'
+          : isLocalTxt(input.url)
+            ? 'txt'
+            : 'guest')
     const id = nextId()
 
     const view = new WebContentsView({
@@ -403,6 +433,18 @@ export class TabManager {
          * 「把选择权交回去」：用户至少看得见那个文件本身，而不是对着白屏猜。
          */
         log.warn(`打不开这本 EPUB 的阅读页，退回普通网页：${url}`, err)
+        kind = 'guest'
+      }
+    } else if (kind === 'txt') {
+      try {
+        viewUrl = txtReaderUrl(url)
+      } catch (err) {
+        /*
+         * 与上面两条同一条退路，代价最小的一种：Chromium 自己就有一个文本查看器，
+         * 退回它照样读得起来（这就是 1.6.9 之前本机 TXT 的样子），丢掉的只是分章与
+         * 位置——那总比一张空白页强。
+         */
+        log.warn(`打不开这一份 TXT 的阅读页，退回内置文本查看器：${url}`, err)
         kind = 'guest'
       }
     }

@@ -1,8 +1,10 @@
 /*
- * 本机 EPUB 阅读页。
+ * 自家阅读页的那一层外壳：滚动容器、纸、浮动读数、目录与排版面板。
  *
- * 这一份只管**外面那一层**：滚动容器、纸、浮动读数、目录与排版面板。书自己的排版不在这里
- * ——它落在 Shadow DOM 里，由 BookApp 往那个根上注入（见该文件的 DEFAULTS / CLEAR）。
+ * **本机 EPUB 与本机 TXT 两页共用这一份。**文件名还叫 book.css（它是先来的），
+ * 但里面这些规则一条都不属于「书」：纸、浮层、目录面板、排版面板在两页上是同一个
+ * 东西，各画一份迟早会长歪。真正各页自己的那一层在各自的地方——书自己的排版落在
+ * BookApp 注入 Shadow DOM 的那几张样式表里，TXT 的正文在 txt.css。
  *
  * 纸为什么是一个独立的层而不是给容器加 opacity：opacity 会把字一起淡掉，而要淡的是
  * 纸。这一条与 PDF 那一页共享同一句话，只是落点不同——那边纸是画布的 CSS 底色，
@@ -12,11 +14,31 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-.book {
+.reader {
   position: absolute;
   inset: 0;
   /* 底色不画：窗口本身是逐像素透明的，这一页要让桌面透过来 */
   background: transparent;
+}
+
+/*
+ * 控件重置。
+ *
+ * 这两页**不加载 base.css**（那一份是应用外壳的底座，里面还有一堆与阅读无关的规矩：
+ * 12px 的字、不选中文本、滚动条配色）。缺了它，`button` 就带着 Chromium 的原生外观：
+ * 浅灰底 + 一道立体边框。而浮层里那两枚键与目录里每一条都是我们自己画的胶囊与行，
+ * 原生外观盖在上面就是两块补丁。
+ *
+ * 逐条与 base.css 里那一段相同——**同一件事在本仓库只有一种写法**，两份不一样才是怪事。
+ */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
 }
 
 /*

@@ -1,18 +1,21 @@
 /**
  * 探针：离线阅读的排版三项，端到端走一遍。
  *
- * 问四件事，每件都得有读数：
+ * 问的是 1.6.6 那一版就立起来的那件事，只是**这一版换了一页**：本机 TXT 不再交给
+ * Chromium 的文本查看器渲染（那一页整篇是一个 `pre`，见 spike/txt-page.js 量的形状），
+ * 而是自家那一页（`txt.html?doc=<token>`）。于是这一支量的是 `.txt__body`，不是 `pre`。
  *
- *   1. **默认那一组有没有落上去**。本机 TXT 是 Chromium 自己排的，它的排版原先是
- *      UA 给的 `13px monospace / line-height: normal / padding-left: 0`；这一版
- *      起改由配置里那组（17px / 1.85 / 6%）说了算。量的是那个 `pre` **算出来的**
- *      font-size / line-height / padding（不是我们写进去的那串字——写进去而没生效
- *      正是这一条最可能出的坏法）。
- *   2. **顶栏那枚 Aa 键在不在、按下去面板出不出来**。它在读本机文本时可用，
- *      在网页上禁用。
- *   3. **面板里拖一下，正文当场变**。走的是真路：面板是独立子窗口，从主进程
- *      里拿它、在它里面派 `input`，配置一变由 index.ts 的订阅推回 TXT 那一页。
- *   4. **三个方向各自独立**（改字号不动留白，改留白不动字号）。
+ * 五件事，每件都得有读数：
+ *
+ *   1. **默认那一组有没有落上去**。量的是正文**算出来的** font-size / line-height /
+ *      padding（不是我们写进去的那串字——「写进去了、没生效」正是这一条最可能出的
+ *      坏法）。同时量一遍外壳：这一页是自家那一页，场上**没有**哪一屏加载的是那个
+ *      `.txt` 本身（判错了 kind，Chromium 会把它当下载变成一片空白，见 book-tab 的 T1）。
+ *   2. **顶栏那枚 Aa 键在不在、按下去面板出不出来**。它在读本机文本时可用，在网页上禁用。
+ *   3. **面板里拖一下，正文当场变**，且三个方向各自独立（改留白不动字号）。
+ *   4. **两枚浮层键是干净的**（`.hud__key` 没有 Chromium 给按钮的原生灰底与立体边框）。
+ *      这一条是跟着新页面一起补的：读者页不加载 base.css，而那两条规则原先是 UA 说了算。
+ *   5. **网页上那枚键该是禁用的**。
  *
  * 跑法：npx electron --no-sandbox spike/txt-typeset.js
  *      npx electron --no-sandbox spike/txt-typeset.js --txt <路径>
@@ -92,28 +95,38 @@ const fileOf = (url) => (!url ? '(空)' : (url.split(/[\\/]/).pop() || url).spli
 const r2 = (n) => Math.round(n * 100) / 100
 
 /**
- * 量那个 `pre`。
+ * 量正文那一层。
  *
- * 量的是**算出来的值**（`getComputedStyle`），不是写在行内的那串字：
- * 「写进去了、没生效」正是这一条最可能出的坏法——Chromium 给 text/plain 的
- * UA 规则（`pre { font: … }`）与我们的行内声明谁赢，只有算出来才算数。
+ * 量的是**算出来的值**（`getComputedStyle`），不是写在行内的那串字：排版三项走的是
+ * `--zhituan-reader-*` 这三个自定义属性，而「变量写没写进去 / 写进去了有没有人用」
+ * 是两种坏法，只有算出来才算数。
+ *
+ * 顺带量三样：读数那一句（章名 + 第几章/共几章）、那一行章名、以及浮层上那枚键的
+ * 底色与边框——最后这两个是第 4 条判据要看的东西。
  */
 const 量正文 = (wc) =>
   wc.executeJavaScript(`(() => {
-    const p = document.querySelector('pre')
-    if (!p) return { pre: false }
-    const s = getComputedStyle(p)
-    const r = p.getBoundingClientRect()
+    const b = document.querySelector('.txt__body')
+    if (!b) return { 有正文: false, 场上有什么: [...document.querySelectorAll('*')].slice(0, 10).map((e) => e.className || e.tagName) }
+    const s = getComputedStyle(b)
+    const r = b.getBoundingClientRect()
+    const 键 = document.querySelector('.hud__key')
+    const 键样式 = 键 ? getComputedStyle(键) : null
     return {
-      pre: true,
-      行内: p.getAttribute('style') || '',
+      有正文: true,
       算出来的字号: s.fontSize,
       算出来的行距: s.lineHeight,
       算出来的左内边距: s.paddingLeft,
       算出来的右内边距: s.paddingRight,
       字体系列: s.fontFamily.split(',')[0],
       盒宽: Math.round(r.width),
-      文档高: document.documentElement.scrollHeight
+      文档高: document.documentElement.scrollHeight,
+      正文长: b.textContent.length,
+      章名: document.querySelector('.txt__head')?.textContent?.trim() ?? null,
+      读数: document.querySelector('.hud__count')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null,
+      键底色: 键样式 ? 键样式.backgroundColor : null,
+      键边框: 键样式 ? 键样式.borderTopWidth : null,
+      滚动条: (() => { const st = document.querySelector('.stage'); return st ? { 高: st.clientHeight, 内容高: st.scrollHeight } : null })()
     }
   })()`)
 
@@ -165,7 +178,7 @@ async function main() {
     fs.writeFileSync(书, ('第1章 大唐\n\n    贞观九年，长安城，大街上，人声鼎沸。\n').repeat(20000), 'utf8')
   }
   const 地址 = pathToFileURL(书).href
-  const 报告 = { 素材: 书, 字节: fs.statSync(书).size }
+  const 报告 = { 素材: 书, 字节: fs.statSync(书).size, 素材说明: '真小说是 GBK / 无 BOM' }
 
   console.log(`…… 开这一本：${书}（${报告.字节} 字节）`)
   await chrome.webContents.executeJavaScript(
@@ -175,28 +188,51 @@ async function main() {
   let 读的那一屏 = null
   for (let i = 0; i < 60; i++) {
     await delay(500)
-    读的那一屏 = win.contentView.children.find((v) => v.webContents.getURL() === 地址)
+    读的那一屏 = win.contentView.children.find((v) => fileOf(v.webContents.getURL()) === 'txt.html')
     if (读的那一屏) {
       const 好了 = await 读的那一屏.webContents.executeJavaScript('document.readyState').catch(() => 'loading')
       if (好了 === 'complete') break
     }
   }
-  if (!读的那一屏) throw new Error('没等到那一屏：按地址找不到那个视图')
-  await delay(1200)
+  if (!读的那一屏) {
+    throw new Error(
+      `没等到自家那一页：场上是 ${win.contentView.children.map((v) => fileOf(v.webContents.getURL())).join('、')}`
+    )
+  }
+  // 正文要解码 + 切章才出来，等它有了再量
+  for (let i = 0; i < 40; i++) {
+    const 有 = await 读的那一屏.webContents
+      .executeJavaScript(`Boolean(document.querySelector('.txt__body'))`)
+      .catch(() => false)
+    if (有) break
+    await delay(250)
+  }
+  await delay(600)
 
-  console.log(`\n================ 一、默认那组有没有落上去（${path.basename(书)}）================`)
+  console.log(`\n================ 一、接线与默认那组（${path.basename(书)}）================`)
+  报告.地址 = 读的那一屏.webContents.getURL()
+  报告.掉到文件本身上了吗 = Boolean(
+    win.contentView.children.find((v) => v.webContents.getURL() === 地址)
+  )
   报告.注入前 = await 量正文(读的那一屏.webContents)
+  console.log(`地址      ${报告.地址.slice(0, 110)}`)
   console.log(`正文      ${JSON.stringify(报告.注入前, null, 0)}`)
 
   // 期望：字号 17px、行距 1.85×17=31.45px、左右内边距各 6%
-  const 盒宽 = 报告.注入前.盒宽
+  const 盒宽 = 报告.注入前.盒宽 ?? 0
   const 期望左 = r2(盒宽 * 0.06)
   报告.判据一 = {
+    加载的是自家那一页: fileOf(报告.地址) === 'txt.html',
+    没有掉到文件本身上: !报告.掉到文件本身上,
     字号对: 报告.注入前.算出来的字号 === '17px',
     行距对: Math.abs(parseFloat(报告.注入前.算出来的行距) - 31.45) < 0.6,
-    留白对: Math.abs(parseFloat(报告.注入前.算出来的左内边距) - 期望左) < 2
+    留白对: Math.abs(parseFloat(报告.注入前.算出来的左内边距) - 期望左) < 2,
+    章名排出来了: typeof 报告.注入前.章名 === 'string' && 报告.注入前.章名.length > 0,
+    读数写着第几章共几章: /·\s*\d+\/\d+$/.test(报告.注入前.读数 ?? '')
   }
-  console.log(`判据一    ${JSON.stringify(报告.判据一)}   （盒宽 ${盒宽}，6% 应是 ${期望左}px）`)
+  console.log(
+    `判据一    ${JSON.stringify(报告.判据一)}   （盒宽 ${盒宽}，6% 应是 ${期望左}px；读数「${报告.注入前.读数}」）`
+  )
 
   // ---- 二、顶栏那枚 Aa ----
   console.log(`\n================ 二、顶栏那枚 Aa 键 ================`)
@@ -290,43 +326,50 @@ async function main() {
   })()`)
   console.log(`面板容纳  ${JSON.stringify(报告.面板容纳)}`)
 
-  // ---- 四、网页上那枚键该是禁用的 ----
+  // ---- 四、浮层那两枚键干不干净（读者页不加载 base.css，这一条原先是 UA 说了算）----
+  console.log(`\n================ 四、浮层那两枚键 ================`)
+  报告.判据四 = {
+    键底色透明: 报告.注入前.键底色 === 'rgba(0, 0, 0, 0)',
+    键没有原生边框: parseFloat(报告.注入前.键边框 ?? '1') === 0
+  }
+  console.log(
+    `判据四    ${JSON.stringify(报告.判据四)}   （底色 ${报告.注入前.键底色}，边框 ${报告.注入前.键边框}）`
+  )
+
+  // ---- 五、网页上那枚键该是禁用的 ----
   const 网页 = win.contentView.children.find(
     (v) => v !== chrome && /^https?:/.test(v.webContents.getURL())
   )
   if (网页) {
-    await chrome.webContents.executeJavaScript(`(() => {
-      const tabs = [...document.querySelectorAll('.tabstrip button, [data-tab]')]
-      return tabs.length
-    })()`).catch(() => 0)
     // 直接走桥切到那张网页（不依赖标签条上那几个 DOM）
     const 网页id = await chrome.webContents.executeJavaScript(
       `window.zhituan.tabs.list().then((s) => (s.tabs.find((t) => /^https?:/.test(t.url)) ?? {}).id ?? null)`
     )
     if (网页id) {
-      await chrome.webContents.executeJavaScript(`window.zhituan.tabs.activate({ tabId: ${JSON.stringify(网页id)} })`)
+      await chrome.webContents.executeJavaScript(
+        `window.zhituan.tabs.activate({ tabId: ${JSON.stringify(网页id)} })`
+      )
       await delay(900)
       报告.键_读网页时 = await 量键(chrome)
       console.log(`\n切换看一张网页之后：${JSON.stringify(报告.键_读网页时)}`)
-      报告.判据四 = { 网页上禁用: 报告.键_读网页时.禁用 === true }
-      console.log(`判据四    ${JSON.stringify(报告.判据四)}`)
+      报告.判据五 = { 网页上禁用: 报告.键_读网页时.禁用 === true }
+      console.log(`判据五    ${JSON.stringify(报告.判据五)}`)
     }
   } else {
-    报告.判据四 = { 说明: '这次没有可切换的网页标签，跳过' }
+    报告.判据五 = { 说明: '这次没有可切换的网页标签，跳过' }
   }
 
   const 全过 =
-    报告.判据一.字号对 &&
-    报告.判据一.行距对 &&
-    报告.判据一.留白对 &&
+    Object.entries(报告.判据一).every(([, v]) => v === true) &&
     报告.判据二.摆在锚点下方 &&
     报告.判据二.三行齐 &&
     报告.判据二.读数与配置一致 &&
     Object.entries(报告.判据三).every(([, v]) => v) &&
+    Object.entries(报告.判据四).every(([, v]) => v) &&
     报告.面板容纳.裁掉了 === 0 &&
-    (报告.判据四.网页上禁用 ?? true)
+    (报告.判据五.网页上禁用 ?? true)
 
-  报告.结论 = 全过 ? '排版三项端到端成立' : '有判据没过，见上面几条'
+  报告.结论 = 全过 ? '排版三项端到端成立（自家 TXT 页）' : '有判据没过，见上面几条'
   console.log(`\n结论      ${报告.结论}`)
 
   fs.mkdirSync(OUT_DIR, { recursive: true })

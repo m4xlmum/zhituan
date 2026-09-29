@@ -1,0 +1,71 @@
+/*
+ * 本机 TXT 阅读页（1.6.9 起）。
+ *
+ * 外壳不在这里：纸、滚动容器、右下角那条浮层、目录面板、排版面板全部与 EPUB 那一页
+ * 共用 styles/book.css——它们在两页上是同一个东西，各画一份迟早会长歪。这一份只写
+ * **正文长什么样**，而两页的正文来源正好相反：
+ *
+ *   · EPUB 那一页的正文是书给的（带着书自己的样式表，落在 Shadow DOM 里）；
+ *   · TXT 这一页的正文是**一份纯文本**——它连一个标签都不是别人给的，`white-space:
+ *     pre-wrap` 就是它的全部排版。
+ *
+ * 排版三项（字号 / 行距 / 左右留白）走的是那一组自定义属性
+ * （`--zhituan-reader-*`，由 TxtApp 的 applyTypeset 写在 `:root` 上），与书页那一份
+ * **同源同值**：配置里只有一份字号，两页读的是它。这里不必带 `!important`——书页那一份
+ * 要压的是书，而这一页没有人跟我们抢。
+ *
+ * 属性取不到时那几个兜底值（17px / 1.85 / 6%）与 @shared/constants 里那三个默认值同值，
+ * 只是 CSS 里引不到 TS 的常量。真正写这三个变量的是 TxtApp 的 applyTypeset：配置还没
+ * 取回来时它写的就是那三个默认值，于是这里的兜底只在「页面已经画出来、脚本还没跑到」
+ * 那一瞬间起作用。
+ *
+ * 留白是百分比而不是像素，与书页一致：换个窗口宽度读到的还是同一份版心。
+ *
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
+/* 章名那一行。字号跟着正文字号走（大一号），于是拉字号时它一起变 */
+.txt__head {
+  margin: 0;
+  padding: 1.5em var(--zhituan-reader-margin, 6%) 0.5em;
+  color: var(--zhituan-text);
+  font-family: var(--zhituan-font);
+  font-size: calc(var(--zhituan-reader-size, 17px) * 1.12);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/*
+ * 正文。
+ *
+ * `font-family` 不写 monospace：原来那一页是 Chromium 的文本查看器，它按「这是一份
+ * 文本」给了一副等宽字体（13px monospace），读小说时每一行的字数少得可怜。这一页是
+ * **阅读器**，用的是主题那一份正文字体。
+ *
+ * `pre-wrap` 是这一页的整个排版：换行、空行、段首那两个全角空格都是原文自带的，
+ * 一个字都不许被 HTML 的空白折叠吃掉（这也是不能把正文当 HTML 塞进去的另一个理由）。
+ * `overflow-wrap` 兜住窄窗口下那几行没有空格的长句——不留它就会横向滚出去。
+ */
+.txt__body {
+  margin: 0;
+  padding: 0 var(--zhituan-reader-margin, 6%) 3em;
+  color: var(--zhituan-text);
+  font-family: var(--zhituan-font);
+  font-size: var(--zhituan-reader-size, 17px);
+  line-height: var(--zhituan-reader-leading, 1.85);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  /* 可选中：摸鱼的时候想把一段话拷出来，不该被拦 */
+  user-select: text;
+}
+
+/*
+ * 浮层里那一句读数。它写的是章名，而章名可以很长（「第30章 蜀王殿下是鉴定花魁们的
+ * 技艺」）；浮层是一个胶囊，长章名该被截断，不该把它撑成一条横幅盖住正文。
+ * 截断之后鼠标悬停仍能看到全文——它带 title（见 TxtApp 的模板）。
+ */
+.txt .hud__count {
+  max-width: min(48vw, 340px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

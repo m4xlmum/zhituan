@@ -280,8 +280,9 @@ function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
           <span class="tvalue">{{ config?.ui.readerMargin ?? DEFAULT_READER_MARGIN }}%</span>
         </label>
         <p class="hint">
-          只作用于正在读的这一份本机文本：TXT 这类由 Chromium 排的页，以及自家 EPUB
-          阅读页（那一页里也有一枚同样的 Aa）。网页不受影响。
+          只作用于正在读的这一份本机文本：自家那两页阅读器（本机 TXT 与本机 EPUB，页面上
+          也各有一枚同样的 Aa），以及 Chromium 排出来的本机文本（.md、.log 这一类）。
+          网页不受影响。
         </p>
       </template>
 

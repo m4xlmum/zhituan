@@ -23,6 +23,11 @@ import { api } from './api'
  * 还要经 `zhituan.book` 报回主进程。少写它一个的后果不是报错，是**静默地什么都
  * 不生效**——滑块拖不动、位置记不住，看着像功能没做出来。2026-09-27 由
  * spike/book-tab.js 的 T4 抓到（见 docs/spike-findings.md 的 Q69）。
+ *
+ * 本机 TXT 的阅读页（txt.html）与它一模一样地依赖这座桥：纸、排版三项、位置
+ * （`zhituan.book`）三条全在桥上，而它连**正文本身**都是桥那一边给的能力换来的
+ * ——那一页要 fetch `zhituan-txt://<token>/text`。漏了它，打开一本 TXT 会看到
+ * 一句「打不开这一份文件」，而不是一份静默的坏心情。
  */
 const OWN_PAGES = [
   '/index.html',
@@ -30,7 +35,8 @@ const OWN_PAGES = [
   '/popover.html',
   '/settings.html',
   '/pdf.html',
-  '/book.html'
+  '/book.html',
+  '/txt.html'
 ]
 
 function isOwnPage(): boolean {

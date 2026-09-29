@@ -187,15 +187,17 @@
     够不着——主进程走这条路没有这个限制（`spike/media-pause.js`：收起那一组 Q1–Q10、
     切走那一组 Q11–Q16）。
 
-22. **本机 TXT 的排版三项只能写在那个 `pre` 上，而且留白只能走 `padding`。**
-    字号 / 行距 / 左右留白这一组是**一份配置**，落点却有三种：本机 EPUB 那一页是自家排的
+22. **本机文本的排版三项没有统一落点，一处一份写法：自家那两页从配置广播里读，
+    交给 Chromium 的那些（`.md`、`.log`）才往那个 `pre` 上写，而且留白只能走 `padding`。**
+    字号 / 行距 / 左右留白这一组是**一份配置**，落点却有四种：本机 EPUB 那一页是自家排的
     （书页右下角那枚 Aa 把三个自定义属性写进 `:root`，Shadow DOM 里的正文继承得到）；
-    本机 PDF 不吃它（字印在位图里，想放大得改缩放）；而**本机 TXT 那一页是 Chromium
-    自己渲染的**——整篇文档就是它生成的一个 `<pre>`（用户那本 354 万字的小说全在里面），
-    页面上挂不住任何控件，能碰的只有写在它身上的样式。于是顶栏长一枚 Aa（`TopBar.vue`）
+    本机 PDF 不吃它（字印在位图里，想放大得改缩放）；**本机 TXT 也是自家的一页**
+    （1.6.9 起，见 services/txtReader.ts 与第 24 条）；剩下那些**被交给 Chromium 自己渲染的**
+    本机文本——整篇文档就是它生成的一个 `<pre>`（`.md`、`.log` 这一类），页面上挂不住任何
+    控件，能碰的只有写在它身上的样式。于是顶栏长一枚 Aa（`TopBar.vue`）
     开一张面板（`OpenPopoverRequest.kind === 'typeset'`），主进程把三项写进那个 `pre`
     （`pageStyler.applyReaderTypeset`）。
-    **不能照抄 EPUB 那一页的写法**：那边写的是 `width`，而 UA 给 `pre` 的是
+    **写 `pre` 那一支不能照抄 EPUB 那一页的写法**：那边写的是 `width`，而 UA 给 `pre` 的是
     `max-width: none`——`width` 在它面前没有任何对手，于是 `width: 60%` 被无视，正文
     铺成一条不换行的横带、横向滚出去。留白因此走 `padding-left/right`（加在盒子内侧，
     `pre-wrap` 照旧在少了几十像素的行盒里折行），用百分比让换个窗口宽度读到的仍是同一份
@@ -204,6 +206,9 @@
     边界仍然只有一条：**网页永远吃不到它**，判据还是 `isLocalFile`（谓词多了一层
     `isLocalPdf` 的反面，见 `@shared/url` 的 `isLocalText`，那是给界面判断那枚键
     此刻管不管得着用的）。
+    **判据：`spike/txt-typeset.js`**（1.6.5 建的那一版量的是往 `pre` 上写；1.6.9 起
+    `.txt` 不再走那一支，它量的是自家那一页——而那个 `pre` 那一支仍然由
+    `.md` / `.log` 走，代码一个字没删）。
 23. **安装器收旧进程时不许带 `taskkill /T`——`/T` 连子进程树一起收，而安装程序自己就在那棵树里。**
     「更新并重启」是应用起安装程序：`spawn(安装包, ['/S','--updated','--force-run'],
     { detached: true, stdio: 'ignore' })`。`detached` 在 Windows 上只等于 `DETACHED_PROCESS`
@@ -228,6 +233,21 @@
     （已发布的旧代码，改不了），它之所以没炸，是因为本安装器在调它之前已经把应用**确认**
     收干净了（`zt.KillApp` 要循环到 `taskkill` 返回 128 才罢手）。
 
+24. **阅读位置只认「此刻画着的那一屏」报回来的那一笔——而这件事只有 `TabManager` 知道。**
+    本机 EPUB 与本机 TXT 两页共用一条通道（`SEND.bookReading`）报「我在第几章的百分之几」，
+    而这份账只有一行：同一份文件开着两屏时两屏都在报，**后到的覆盖先到的**。
+    危险的不是「用户没在读它」这么简单——后台那一屏自己会因为重排、被重新摆一次、
+    补位落定而发一串滚动事件，于是**一次会话下来最后落在账上的，往往是它开屏时读到的
+    位置**：眼前这一屏读到第 200 章，旁边那屏还停在开屏时的第 11 章，下一次打开就回到
+    第 11 章——正是用户那句「记不住读到哪儿」（判据是 `spike/txt-resume.js` 的 T5，
+    改前它如实报坏；账里那一笔的 `at` 比第 200 章那一笔更晚，是它盖上去的现场证据）。
+    于是这条 IPC 上有一道闸：`ctx.tabs.isActiveView(event.sender)`，不在上面的那一屏
+    报什么都不记。**判的是视图的 `webContents` 而不是标签页 id**——报告人手里只有自己的
+    `webContents`（那条 IPC 的形状如此），而「谁在上面」只有 `TabManager` 一处记着
+    （`activeId`）；因此这条规矩**不能写在阅读页里**，页面自己不知道自己是前台还是后台。
+    代价是后台那一屏的位置不记——那本来也不是用户的「上次」。这一条同时管住 EPUB 与 TXT
+    两页，改一次两处都对。
+
 > 早期版本用 `setShape` 裁剪窗口的命中区域来实现「隐藏区域点击穿透」。
 > 改为收起成球之后这套机制已整体移除：窗口真的缩小了，就不需要再靠裁剪
 > 去欺骗命中测试，`setShape` 也不再有存在的理由。
@@ -238,7 +258,7 @@
 src/shared/    三个进程共享的类型、IPC 契约、常量
 src/main/      主进程：窗口编排、状态机、浏览器、数据存储
 src/preload/   唯一的 contextBridge 桥
-src/renderer/  chrome 界面 / 弹出面板 / 系统设置 / PDF 阅读页
+src/renderer/  chrome 界面 / 弹出面板 / 系统设置 / PDF 阅读页 / EPUB 阅读页 / TXT 阅读页
 ```
 
 关键文件：
@@ -251,7 +271,10 @@ src/renderer/  chrome 界面 / 弹出面板 / 系统设置 / PDF 阅读页
 | `src/main/services/geometry.ts` | 版面矩形计算，坐标判断的唯一来源 |
 | `src/main/services/updateService.ts` | 更新那一路：查 `latest.yml` → 比版本 → 下载并校验 sha512 → 起安装程序。**不用 electron-updater** 的三条理由写在文件头 |
 | `src/main/services/pdfReader.ts` | 本机 PDF 那条路：`zhituan-pdf://` 的两张面（字节与资源）、token ↔ 路径的对应表、阅读页的地址 |
-| `src/main/services/pageStyler.ts` | 注入访客页面的四样东西：透明底、藏滚动条、离线阅读透明度在 **TXT 那一半**上的 `opacity`、以及离线阅读的排版三项（字号 / 行距 / 左右留白，写在那个 `pre` 上）。**后两样都只给本机文件**（见第 20、22 条；PDF 那一半由页面自己落在画布底色上，EPUB 那一页自己从配置里读） |
+| `src/main/services/txtReader.ts` | 本机 TXT 那条路：`zhituan-txt://<token>/text` 把字节交给自家那一页（**故意不带 charset**——认编码是页面那一半的事，用的是同一个 `TextDecoder`），以及续读那一半：开这一页时从 `reading.of(本机路径)` 取回上一次的章与章内比例，编进地址的 `at` / `ratio` |
+| `src/shared/txt.ts` | 切章那一套的**全部**（纯函数，主进程与渲染进程共用同一份）：五档编码的 `decodeText`、`splitChapters` / `chapterText` / `isChapterLine`、位置记号的 `formatMark` / `parseMark` / `locateChapter`。它是「章」这件事唯一的定义处 |
+| `src/main/services/pageStyler.ts` | 注入访客页面的四样东西：透明底、藏滚动条、离线阅读透明度在 **Chromium 自己排的本机文本**那一半上的 `opacity`、以及排版三项（字号 / 行距 / 左右留白，写在那个 `pre` 上）。**后两样都只给本机文件**（见第 20、22 条；PDF 那一半由页面自己落在画布底色上，EPUB 与 TXT 那两页自己从配置里读） |
+| `src/renderer/src/txt/TxtApp.vue` | 本机 TXT 的阅读页：认编码、切章、**一次只把一章放进 DOM**（`chapterText`），滚动到章末再滚一下 / 方向键 / 目录里点一条三条通道翻章，位置按 600ms 去抖上报（第 24 条那道闸在主进程那一头） |
 | `src/renderer/src/composables/usePopover.ts` | 「从按下的那一格上开一张弹出面板」的唯一一处：量锚点、报给主进程摆位（顶栏那枚 Aa 与右栏那四格共用） |
 | `src/renderer/src/home/useRows.ts` | 起始页的行模型与交互：三套主题共用，世界组件只负责画 |
 | `src/renderer/src/pdf/PdfApp.vue` | 阅读页：pdf.js 把一页画进画布，再把纸收掉、把字上成一份固定的近黑墨（这一页不写主题，见 `useTheme.ts`；排版在 `styles/pdf.css`）；离线阅读透明度在这一页上落的是**画布的元素底色**（那张纸），不是 `opacity`（见第 20 条） |

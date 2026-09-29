@@ -32,6 +32,7 @@ import {
 } from './services/bookReader'
 import { registerPdfProtocol, registerPdfScheme } from './services/pdfReader'
 import { ReadingStore } from './services/readingStore'
+import { attachReadingStore as attachTxtReadingStore, registerTxtProtocol, registerTxtScheme } from './services/txtReader'
 import { rendererUrl } from './services/rendererUrl'
 import { hardenWebContents, setupSession } from './services/sessionSetup'
 import { SiteStore } from './services/siteStore'
@@ -132,8 +133,12 @@ function bootstrap(): void {
    * 阅读位置这份账按**本机路径**记，而阅读页手里只有一个 token——两张表都在
    * services/bookReader.ts 里，于是换算也交给它一处做完（见 rememberReading）。
    * 换成别处再算一遍，等于把那两张表的作用域扩出去，迟早有人顺着它读路径。
+   *
+   * 本机 TXT 那一页（services/txtReader.ts）有一份自己的、同构的账：两份账记的是
+   * 同一件事的两半，各自只管自己认得的 token（见那个文件头上「为什么是两张表」）。
    */
   attachReadingStore(reading)
+  attachTxtReadingStore(reading)
   const ballIcon = new BallIconStore(userDataDir)
   const bossKeys = new BossKeyService()
 
@@ -142,10 +147,12 @@ function bootstrap(): void {
   let ses: Session | null = null
   hardenWebContents()
   // 特权协议名只能在 app ready 之前声明；处理程序挂到分区会话上，见 whenReady。
-  // 这两条是同一件事的两半：「自家的阅读页怎么拿到一本书的字节」——一个给 PDF，
-  // 一个给 EPUB。放在这里而不是各自模块的初始化里，是因为时机是 Electron 定的。
+  // 这三条是同一件事的三半：「自家的阅读页怎么拿到一本书的字节」——一个给 PDF，
+  // 一个给 EPUB，一个给 TXT。放在这里而不是各自模块的初始化里，是因为时机是
+  // Electron 定的。
   registerPdfScheme()
   registerBookScheme()
+  registerTxtScheme()
 
   function broadcast(channel: string, payload: unknown): void {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -415,9 +422,10 @@ function bootstrap(): void {
   app.whenReady().then(() => {
     // 持久化会话必须在这里创建：app ready 之前 session 模块不可用
     ses = setupSession()
-    // 本机 PDF 与本机 EPUB 的资源通道都挂在这个分区会话上（页面全都在它里面）
+    // 本机 PDF / EPUB / TXT 的资源通道都挂在这个分区会话上（页面全都在它里面）
     registerPdfProtocol(ses)
     registerBookProtocol(ses)
+    registerTxtProtocol(ses)
 
     electronApp.setAppUserModelId('com.m4xlmum.zhituan')
     app.on('browser-window-created', (_e, win) => optimizer.watchWindowShortcuts(win))

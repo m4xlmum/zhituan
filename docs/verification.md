@@ -908,8 +908,30 @@ env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-typeset.js
 TXT 那一页**当场**变（26px、内边距归 0、行距 62.4px），且三条互不串动，文档高从
 726 万涨到 1286 万再到 1578 万像素。读数落 `spike/out/txt-typeset.json`。
 
-`live-app.js`、`book-tab.js`、`txt-big-opacity.js`、`rail-hit.js` 与 `txt-typeset.js`
-都要 `require` 真主进程，因此**两道隔离缺一不可**：
+```bash
+env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-resume.js
+env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-resume.js --txt <路径>
+```
+
+**本机 TXT 的章区分与续读，端到端走一遍**（Q84）——用户那句「读 TXT 记不住读到哪儿」
+的判据。真主进程、真标签页、真那份账、真输入事件，五问：T1 加载的**是**自家那一页
+（场上没有任何一屏加载那个 `.txt` 本身）、切出来的章数与章名与探针自己用 `src/shared/txt.ts`
+现编一份切出来的**逐字相同**（交叉核对，否则「章区分」可能只是页面上凑出来的一个数）；
+T2 方向键 / 滚轮到章末再滚一下 / 目录里点一条，三条通道都能翻章，且**滚轮那一路要数
+事件**——页面挂一个只数数的听众，「没送到」与「送到了但没翻章」是两种坏法；
+T3 章内滚到六成之后 `reading.json` 里那一笔的 key 是**本机路径**（不是 token）、值带着
+章序与章内比例；T4 就在旁边再开一屏，地址里带 `at` 与 `ratio`，落在同一章同一位置；
+T5 把这一屏切到眼前、跳到很靠后的一章，再开一屏——**回来的不是附近那一章，
+而是那一章**，而且旁边那一屏自己再报一次位置也盖不掉它。默认拿用户机器上那本
+6.75MB 的 GBK 小说（1439 章，只读）。
+
+跑法上有一处与别支不同（**探针跑完是 5/5，而它一开始是 4/5**）：T5 那一问正是
+1.6.9 那处修正的判据，改前它会**如实报坏**（改前账上留下的是第 11 章，来自后台那一屏）。
+`reading.json` 这一支**刻意不抄**用户那份——要看的正是「从零开始读，它记得住吗」，
+带着用户自己那份账进来就分不清哪一条是这一跑记下的。读数落 `spike/out/txt-resume.json`。
+
+`live-app.js`、`book-tab.js`、`txt-big-opacity.js`、`rail-hit.js`、`txt-typeset.js`
+与 `txt-resume.js` 都要 `require` 真主进程，因此**两道隔离缺一不可**：
 `app.setPath('appData', TEMP)` **与** `app.setPath('userData', TEMP)`。只改 userData
 挡不住改名搬迁——`migrateLegacyUserData()` 读的是 `appData`。理由与现场见 Q68。
 

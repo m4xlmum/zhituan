@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      标签条上的名字由主进程写在标签上（本机文件只显示文件名），这一页的标题
+      从来不会露出来。写一个最朴素的，只为浏览器有得可读。
+    -->
+    <title>TXT</title>
+    <!--
+      本机 TXT 阅读页的 CSP。
+
+      与 book.html 那份几乎一样，只差一处：**这里没有 `zhituan-book:`，换成了
+      `zhituan-txt:`**，而且它只出现在 `connect-src` 里——正文是我们 `fetch` 回来的一份
+      字节（`zhituan-txt://<token>/text`，见 services/txtReader.ts），不是浏览器自己去
+      取的一份文档：这一页没有任何 `<img>`、`<link>`、`<script>` 指向那条协议，
+      因为一份 TXT 里除了字什么都没有。放行到最小面。
+
+      `script-src 'self'`：这一页不执行任何外来脚本，一个字都不是别人给的。
+
+      `style-src` 留 `unsafe-inline` 是必须的，两个理由：开发期 Vite 用 <style> 注入
+      样式；生产期 Vue 的 <style> 也走同一条路。这一页没有书，因此不必像 book.html
+      那样额外放行一条协议。
+
+      `img-src` 一条都不留：这一页不画图。真按默认（`default-src 'none'`）拦住所有
+      图片请求，正是想要的结果——一个 TXT 文件里不存在图，若真有人把 .txt 当成别的
+      东西打开了，这一条让它什么也带不进来。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' zhituan-txt:; frame-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'"
+    />
+    <!-- 主题与令牌：纸的颜色（--zhituan-surface-rgb）从这两份里来 -->
+    <link rel="stylesheet" href="./src/styles/themes.css" />
+    <link rel="stylesheet" href="./src/styles/tokens.css" />
+    <!-- 外壳（纸、滚动容器、浮层、目录与排版面板）与 EPUB 那一页共用这一份 -->
+    <link rel="stylesheet" href="./src/styles/book.css" />
+    <!-- 这一页自己的那一层：正文怎么排 -->
+    <link rel="stylesheet" href="./src/styles/txt.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./src/main-txt.ts"></script>
+  </body>
+</html>

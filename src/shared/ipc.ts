@@ -175,12 +175,13 @@ export const SEND = {
    */
   setBallRect: 'window:setBallRect',
   /**
-   * 报一次读到哪儿了（本机 EPUB）。
+   * 报一次读到哪儿了（本机 EPUB 与 TXT）。
    *
    * 走单向消息而不是 invoke：一次会话里会报很多次（翻章、停滚、关页），而这件事
    * **没有回话要听**——主进程拿去合并落盘，阅读页不需要任何人确认，与拖动、缩放
    * 是同一条道理。位置由阅读页自己量（只有它知道章内比例），主进程只把这串 token
-   * 换算成本机路径再记下来（见 services/bookReader.ts 的 rememberReading）。
+   * 换算成本机路径再记下来（见 services/bookReader.ts 与 services/txtReader.ts
+   * 的 rememberReading——两个页面同用这一条通道，token 是各自现发的）。
    */
   bookReading: 'book:reading'
 } as const
@@ -218,10 +219,12 @@ export interface OpenPopoverRequest {
   /**
    * 面板种类。
    *
-   * `typeset` 是离线阅读的排版三项（字号 / 行距 / 左右留白）。它与自家 EPUB
+   * `typeset` 是离线阅读的排版三项（字号 / 行距 / 左右留白）。它与自家 EPUB / TXT
    * 阅读页里那枚 Aa 打开的是同一组控件、写的是同一份配置，区别只在锚点：
-   * 书页那一枚长在页面自己的右下角，这一枚长在顶栏上——因为本机 TXT 那一页
-   * 是 Chromium 自己渲染的，页面上没有一处可以让我们挂控件。
+   * 页里那一枚长在页面自己的右下角，这一枚长在顶栏上——它服务的对象是那些
+   * **Chromium 自己渲染**的本机文本（`.md`、`.log` 这一类），页面上没有一处
+   * 可以让我们挂控件。自家那两页也吃它（写的是同一份配置，页面听配置广播），
+   * 于是「顶栏这一枚在读自家阅读页时是禁用的」这种别扭事不必发生。
    *
    * **没有 `sites` 这一档**（1.6.7 起）：站点改在起始页那一屏上管了
    * （增删改与视图切换都在那边），右栏那枚「站点」键与这块面板一并撤掉。
@@ -419,14 +422,18 @@ export interface ZhituanApi {
     openLocal(): Promise<string[]>
   }
   /**
-   * 本机 EPUB 的阅读位置。
+   * 本机阅读页（EPUB 与 TXT）的阅读位置。
    *
    * 只有「记」没有「读」：**上次读到哪儿，是主进程开这一页时就写进地址里的**
-   * （`book.html?doc=…&at=…&ratio=…`，见 services/bookReader.ts 的 bookReaderUrl），
+   * （`book.html?doc=…&at=…&ratio=…`，TXT 那一页同构，见 services/bookReader.ts
+   * 的 bookReaderUrl 与 services/txtReader.ts 的 txtReaderUrl），
    * 于是阅读页打开的那一刻就是对的姿势，不必先问一次、再闪一下。
    *
    * 位置由**阅读页**给：章内比例只有量过滚动高度的那一边才知道；而把 token 换成
    * 哪一本书，只有主进程知道（路径不出主进程）。
+   *
+   * 两个页面同用这一条通道，「章」在两个页面上的含义也一样（EPUB 是书内那一章的
+   * 相对路径，TXT 是 `<章序>:<章名>`，见 @shared/txt），因此没有第二个 API。
    */
   book: {
     /** 报一次位置。单向、不等回执，主进程那一侧合并落盘 */

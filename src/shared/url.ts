@@ -170,8 +170,11 @@ export function fileNameOf(url: string): string | null {
  * 内置阅读器把纸直接画在插件表面上，注入的样式与滤镜一个像素都动不了，
  * 白底因此永远去不掉；自家阅读页用 pdf.js 画进 canvas，纸才是可透明的。
  *
- * 其余本机文件（TXT）照旧交给 Chromium 自己渲染——它本来就把纸留白、
- * 只画字，不必再动。
+ * 其余本机文件（TXT 之外的那些：`.md`、`.log`、`.json`……）照旧交给 Chromium
+ * 自己渲染——它本来就把纸留白、只画字，不必再动。
+ *
+ * TXT 本来也在这句话里，1.6.9 起单列：它要分章、要记「读到哪一章」，而这些都得有
+ * 自己的一页（见 isLocalTxt 与 services/txtReader.ts）。
  */
 export function isLocalPdf(url: string | null | undefined): boolean {
   if (typeof url !== 'string') return false
@@ -192,6 +195,23 @@ export function isLocalPdf(url: string | null | undefined): boolean {
 export function isLocalEpub(url: string | null | undefined): boolean {
   if (typeof url !== 'string') return false
   return fileNameOf(url)?.toLowerCase().endsWith('.epub') ?? false
+}
+
+/**
+ * 本机 TXT：`file:` 协议、且文件名以 `.txt` 结尾。
+ *
+ * 与 isLocalPdf / isLocalEpub 同一族的判据，判的地方也一样（TabManager.create）。
+ * 它进这一族的原因是**章**：交给 Chromium 的文本查看器时整篇文档只是一个巨大的
+ * `pre`，没有章、也就没有「读到哪一章」——位置只能记整篇的百分比，换个字号就落回
+ * 别处。自家开一页（services/txtReader.ts）之后，位置记的是「哪一章 + 章内多少」，
+ * 与本来就记章的本机 EPUB 同一个语义。
+ *
+ * 只认 `.txt`，不放宽成「所有文本文件」：`.md`、`.log` 那些交给 Chromium 自己的
+ * 查看器已经够好（排版三项照样从主进程注得进去），而它们大多不是拿来一读到底的东西。
+ */
+export function isLocalTxt(url: string | null | undefined): boolean {
+  if (typeof url !== 'string') return false
+  return fileNameOf(url)?.toLowerCase().endsWith('.txt') ?? false
 }
 
 /**
@@ -220,15 +240,18 @@ export function isLocalFile(url: string | null | undefined): boolean {
  * 本机文本：`file:` 协议，**且不是 PDF**。
  *
  * 它回答的是「顶栏那枚『Aa』此刻管不管得着」——也就是「这一页的正文是不是
- * 一份能改字号的东西」。管得着的有两种：
+ * 一份能改字号的东西」。管得着的有三种：
  *
- *   · **TXT 这一类**（Chromium 自己渲染的纯文本）：整篇文档就是个 `pre`，
+ *   · **Chromium 自己渲染的纯文本**（`.md`、`.log` 这一类）：整篇文档就是个 `pre`，
  *     字号行距都由 UA 样式表定，我们只能往那个 `pre` 上写样式
  *     （见 services/pageStyler.ts 的 applyReaderTypeset）；
- *   · **自家 EPUB 阅读页**：它从同一份配置里读那三项，右下角也长着一枚 Aa
- *     （见 book/BookApp.vue）。这里把它一并算进来，是因为改的是同一个配置项，
- *     从顶栏改和从书页里改结果一样——两处入口说的是同一件事，没必要在那儿
- *     装作不管。
+ *   · **本机 TXT**：1.6.9 起它有自己的阅读页（services/txtReader.ts），三项排版
+ *     由那一页自己从配置里读（见 renderer/src/txt/TxtApp.vue）。顶栏这一枚仍然算数
+ *     ——面板写的是同一个配置项，那一页听的是配置广播，于是从顶栏拖和从页里拖
+ *     结果一样；
+ *   · **自家 EPUB 阅读页**：同上（见 book/BookApp.vue），右下角也长着一枚 Aa。
+ *     把它一并算进来，是因为改的是同一个配置项，两处入口说的是同一件事，
+ *     没必要在那儿装作不管。
  *
  * PDF 不算：那一页的字是画进 canvas 的，没有字号可调，想放大得改缩放
  * （它是另一条路，见 Rail.vue 那三格缩放）。

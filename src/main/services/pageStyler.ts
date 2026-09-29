@@ -9,7 +9,8 @@
  *   3. 离线阅读的透明度（applyReaderOpacity）——这一条**只给本机文件**
  *      用，网页永远不许吃到它；
  *   4. 离线阅读的排版三项：字号 / 行距 / 左右留白（applyReaderTypeset），
- *      同样只给本机文件里**由 Chromium 自己排**的那些（TXT 这一类）。
+ *      同样只给本机文件里**由 Chromium 自己排**的那些（`.md`、`.log` 这一类；
+ *      本机 TXT 从 1.6.9 起有自己的阅读页，那三项由它自己读配置）。
  *
  * 第 1、2 条不分对象，第 3、4 条分——它们不进 injectPageStyles 那一张样式的
  * 主要原因还不是「分对象」，而是**它们都要随配置当场改**（用户正拖着那几条
@@ -170,10 +171,10 @@ export async function applyReaderOpacity(wc: WebContents, value: number): Promis
  *
  * ## 为什么不等默认值就不写
  *
- * 配置里只有一份字号（`ui.readerFontSize`），本机 EPUB 那一页读的也是它。
- * 于是 17px / 1.85 / 6% 这一组默认值在两边说的是同一件事。代价是**打开一本
- * TXT 的默认样子变了**：从 Chromium 的 13px monospace 变成 17px——这正是
- * 用户要的（那 13px 在 903×508 的窗口里读小说本来就偏小），也是两页字号
+ * 配置里只有一份字号（`ui.readerFontSize`），本机 EPUB 与 TXT 那两页读的也是它。
+ * 于是 17px / 1.85 / 6% 这一组默认值在几个地方说的是同一件事。代价是**打开一份
+ * 本机文本的默认样子变了**：从 Chromium 的 13px monospace 变成 17px——这正是
+ * 用户要的（那 13px 在 903×508 的窗口里读小说本来就偏小），也是几页字号
  * 终于对齐的那一步。这一条写在 README 里。
  *
  * 传进来的值在这里再夹一遍：这三项在 configStore 里没有夹（那三个字段是

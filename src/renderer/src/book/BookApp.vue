@@ -46,15 +46,10 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import {
   DEFAULT_READER_FONT,
   DEFAULT_READER_LINE,
-  DEFAULT_READER_MARGIN,
-  READER_FONT_MAX,
-  READER_FONT_MIN,
-  READER_LINE_MAX,
-  READER_LINE_MIN,
-  READER_MARGIN_MAX,
-  READER_MARGIN_MIN
+  DEFAULT_READER_MARGIN
 } from '@shared/constants'
 import { loadChapter, openBook, type Book, type TocItem } from './epub'
+import TypesetPanel from '../reader/TypesetPanel.vue'
 import { useConfig } from '../composables/useConfig'
 
 /** 浮动读数静这么久就自己退开 */
@@ -361,19 +356,6 @@ function applyTypeset(): void {
   root.setProperty('--zhituan-reader-margin', `${ui.readerMargin}%`)
 }
 
-/** 面板上拖一下。写的是配置，回来的广播会让正文重排 */
-function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
-  const value = Number((event.target as HTMLInputElement).value)
-  if (!Number.isFinite(value)) return
-  const ui =
-    key === 'font'
-      ? { readerFontSize: value }
-      : key === 'line'
-        ? { readerLineHeight: value }
-        : { readerMargin: value }
-  void window.zhituan.config.patch({ ui })
-}
-
 /** 面板与目录一样，开着就别把浮层淡掉（不然拖到一半控件跑了） */
 function toggleTypeset(event: MouseEvent): void {
   typesetOpen.value = !typesetOpen.value
@@ -642,7 +624,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="book">
+  <div class="reader">
     <!--
       纸。它铺满整个视图、压在字的**下面**（不跟正文一起滚），透明度由右栏第三条
       滑块给。不给容器加 opacity：那会把字一起淡掉，而要淡的是纸。
@@ -677,50 +659,9 @@ onBeforeUnmount(() => {
         排版面板。三项都只作用在**正在读的这一页**上，所以它长在这一页里，
         而不是右栏：栏宽只够一排按钮，而这一组要三个滑块加三个读数。
         与目录同一规矩——盖在正文上、开着就不淡出（见 toggleTypeset）。
+        面板本身与 TXT 那一页共用一份（see reader/TypesetPanel.vue）。
       -->
-      <aside v-if="typesetOpen" class="typeset">
-        <label class="typeset__row">
-          <span class="typeset__label">字号</span>
-          <input
-            class="typeset__range"
-            type="range"
-            :min="READER_FONT_MIN"
-            :max="READER_FONT_MAX"
-            step="1"
-            :value="config?.ui.readerFontSize ?? DEFAULT_READER_FONT"
-            @input="setTypeset('font', $event)"
-          />
-          <span class="typeset__value">{{ config?.ui.readerFontSize ?? DEFAULT_READER_FONT }}px</span>
-        </label>
-        <label class="typeset__row">
-          <span class="typeset__label">行距</span>
-          <input
-            class="typeset__range"
-            type="range"
-            :min="READER_LINE_MIN"
-            :max="READER_LINE_MAX"
-            step="0.05"
-            :value="config?.ui.readerLineHeight ?? DEFAULT_READER_LINE"
-            @input="setTypeset('line', $event)"
-          />
-          <span class="typeset__value">{{
-            (config?.ui.readerLineHeight ?? DEFAULT_READER_LINE).toFixed(2)
-          }}</span>
-        </label>
-        <label class="typeset__row">
-          <span class="typeset__label">留白</span>
-          <input
-            class="typeset__range"
-            type="range"
-            :min="READER_MARGIN_MIN"
-            :max="READER_MARGIN_MAX"
-            step="1"
-            :value="config?.ui.readerMargin ?? DEFAULT_READER_MARGIN"
-            @input="setTypeset('margin', $event)"
-          />
-          <span class="typeset__value">{{ config?.ui.readerMargin ?? DEFAULT_READER_MARGIN }}%</span>
-        </label>
-      </aside>
+      <TypesetPanel v-if="typesetOpen" />
 
       <div class="hud" :class="{ off: !hudOn && !tocOpen && !typesetOpen }">
         <span class="hud__count">{{ currentLabel }} · {{ index + 1 }}/{{ total }}</span>
