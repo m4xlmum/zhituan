@@ -110,12 +110,65 @@ Var /GLOBAL ztRc        ; 子进程退出码
 ;
 ; 收不掉也不 Abort：说明进程属于别的用户或权限更高，那交给第 2 层兜底，
 ; 同时留一条日志把原因写清楚。
+;
+; ---------------------------------------------------------------------------
+; **这里绝不能带 /T。** 这一条是 1.6.6 修掉的那个「点了更新并重启，应用关了、
+; 然后什么都没有」，值得写全，免得以后有人觉得「顺手带上 /T 更干净」。
+;
+; 现象：用户从应用里点更新，安装程序起来了（它的日志写了「安装前检测到纸团在
+; 运行」），然后**就没有下文**——旧卸载器没跑、文件一个字节没换、`--force-run`
+; 也到不了，应用被关了、没有人把它叫回来。
+;
+; 根因：应用是这样起安装程序的（src/main/services/updateService.ts 的
+; spawnInstaller）：
+;
+;     spawn(安装包, ['/S','--updated','--force-run'], { detached: true, stdio: 'ignore' })
+;
+; `detached` 在 Windows 上只是 DETACHED_PROCESS 加一个新进程组——**父进程链
+; 原封不动**，安装程序仍然是那个 `zhituan.exe` 的子进程。而 `taskkill /T` 的
+; 语义是「连同**子进程树**一起结束」：这一句本意是收掉纸团（主进程 + 它的
+; renderer/GPU 子进程），实际连**安装程序自己也在这棵树里**，于是它把自己
+; 收走了。它死在发出杀伤指令的那一刻，所以再也没有下一行日志。
+;
+; 为什么 1.6.4 之前一直没露头：只在**应用自己在跑**的时候才会走到 zt.KillApp
+; （应用没在跑时上面那句 taskkill 返回 128，StrCmp 已经跳到 done 了）。而
+; 「应用自己在跑」恰好**只有应用内更新这一条路**——手动双击安装包时应用通常
+; 已经关了，`customCheckAppRunning` 根本不会走到这儿。所以这条 bug 就专门
+; 藏在「应用内更新」上，一次都没被手动安装碰到过。
+;
+; 为什么去掉 /T 不掉杀伤力：Electron 的子进程**全部**同名。主进程、renderer、
+; GPU、utility 都是 `zhituan.exe`（带 --type=... 参数而已），`/IM` 按镜像名
+; 匹配，一枚不带 /T 的 taskkill 照样把它们全收掉。这一点在真机上可以直接看：
+; `tasklist` 里那十个 zhituan.exe 的镜像名一模一样。所以 /T 在这里本来就
+; 是多余的，多余出来的那部分正好是把发起者自己也算进去。
+;
+; 为什么不顺手加一道 `/FI "PID ne $ztSelf"` 把自己排除掉（上游
+; KILL_PROCESS 就是这么写的）：**实测这枚过滤器会毁掉 128**。本机量的读数
+; （同一台机器、同一个 taskkill）：
+;
+;     进程在跑，不带 /FI      → 0
+;     进程早没了，不带 /FI    → 128      ← 下面那个循环靠的就是这一枚
+;     进程早没了，带 /FI      → 0        ← 信号没了
+;
+; 于是「已经收干净了」被读成「又杀了一个」，循环会白跑满 24 轮（约 26 秒）。
+; 而这个宏在一轮升级里要被调三次（customCheckAppRunning 的 chk、
+; customUnInstallCheck 的 unc1 / unc2），白等将近 80 秒。所以不加。
+;
+; 不加也安全：本项目的安装包镜像名恒为 `zhituan-<版本>-<架构>.exe`
+; （electron-builder.yml 的 artifactName），而 APP_EXECUTABLE_FILENAME 是
+; `zhituan.exe`——**撞不上**，所以这个宏天生杀不到自己。真正让它自杀的从来
+; 不是撞名，是下面那个 /T。哪天要是把 artifactName 改成 zhituan.exe，那得
+; 换一种自我排除的办法（不能是 /FI），这里会先炸出来。
+;
+; 探针：spike/nsis-abort-probe/kill-self.nsi —— 把「应用 → detached 子进程」
+; 这个拓扑原样搭出来，跑的就是下面这个宏。改前：探针在宏里消失（没有 B 行、
+; 进程表里也没了）；改后：探针活到写出 B 行，而假应用照旧被杀掉。
 ; ---------------------------------------------------------------------------
 !macro zt.KillApp TAG
   StrCpy $ztTries 0
   zt_kill_${TAG}:
     IntOp $ztTries $ztTries + 1
-    nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /F /T /IM "${APP_EXECUTABLE_FILENAME}"'
+    nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /F /IM "${APP_EXECUTABLE_FILENAME}"'
     Pop $ztRc
     Pop $0
     StrCmp $ztRc "128" zt_kill_done_${TAG}          ; 已经没有这个进程了
@@ -169,6 +222,8 @@ Var /GLOBAL ztRc        ; 子进程退出码
 !macro customCheckAppRunning
   ; 不带 /F 的 taskkill 只投递关闭请求，顺便当探测器用：
   ; 返回 128 说明本来就没在跑，那就什么都不用做。
+  ; **这一句不能加 /FI**：加了之后「没在跑」就不再是 128 了（见 zt.KillApp
+  ; 里那张读数表），这一跳会失效，于是应用明明没开着也会被记成「检测到在运行」。
   nsExec::ExecToStack '"$SYSDIR\taskkill.exe" /IM "${APP_EXECUTABLE_FILENAME}"'
   Pop $ztRc
   Pop $0

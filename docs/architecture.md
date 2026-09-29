@@ -204,6 +204,29 @@
     边界仍然只有一条：**网页永远吃不到它**，判据还是 `isLocalFile`（谓词多了一层
     `isLocalPdf` 的反面，见 `@shared/url` 的 `isLocalText`，那是给界面判断那枚键
     此刻管不管得着用的）。
+23. **安装器收旧进程时不许带 `taskkill /T`——`/T` 连子进程树一起收，而安装程序自己就在那棵树里。**
+    「更新并重启」是应用起安装程序：`spawn(安装包, ['/S','--updated','--force-run'],
+    { detached: true, stdio: 'ignore' })`。`detached` 在 Windows 上只等于 `DETACHED_PROCESS`
+    加一个新进程组，**父进程链原封不动**——安装程序是那个 `zhituan.exe` 的子进程。而安装器里
+    「把还在跑的纸团收干净」那一句原本是 `taskkill /F /T /IM zhituan.exe`：`/T` 的语义是
+    「连同子进程树一起结束」，于是它**把自己也收走了**，死在发出指令的那一刻——旧版卸不掉、
+    文件一个字节不换、`--force-run` 也到不了，用户看到的就是「应用关了、然后什么都没有」
+    （读数见 Q80）。
+    **去掉 `/T` 不掉杀伤力**：Electron 的主进程、renderer、GPU、utility **全部同名**
+    `zhituan.exe`，`/IM` 本来就是一枚不漏的（真机 `tasklist` 里十个进程镜像名一模一样）。
+    `/T` 在这里纯属多余，多余出来的那部分恰好是发起者自己。
+    **别顺手补一道 `/FI "PID ne $ztSelf"`**（上游 `KILL_PROCESS` 就是那么写的）：实测它会
+    毁掉 `taskkill` 的 **128**——「目标已经没了」不再报 128 而是报 0，而 `zt.KillApp` 的
+    重试循环正是靠 128 收敛的，于是每调一次白跑满 24 轮（约 26 秒，一轮升级要调三次）。
+    这一条与 `customRemoveFiles` 里「删不干净必须以非 0 退出」是同一种东西：
+    **退出码是这条链上唯一的信号通路，动它之前先量它。**
+    判据：`spike/nsis-abort-probe/kill-self.nsi` + `kill-self.sh`——假「应用」（node.exe
+    改名的 `zt-fakeapp.exe`）用同样的 `detached` 方式起探针，探针里跑的就是**生产的**
+    `customCheckAppRunning`；改前只有 `A`（探针在宏里消失），改后 `A/B/C` 齐，且假应用
+    必须照旧被杀掉（「什么都不杀」也能骗过活着那一半）。
+    还有一条**只对 1.6.4 → 1.6.6 这一次升级成立**的依赖：1.6.4 的卸载器里仍带着 `/T`
+    （已发布的旧代码，改不了），它之所以没炸，是因为本安装器在调它之前已经把应用**确认**
+    收干净了（`zt.KillApp` 要循环到 `taskkill` 返回 128 才罢手）。
 
 > 早期版本用 `setShape` 裁剪窗口的命中区域来实现「隐藏区域点击穿透」。
 > 改为收起成球之后这套机制已整体移除：窗口真的缩小了，就不需要再靠裁剪
@@ -240,6 +263,7 @@ src/renderer/  chrome 界面 / 弹出面板 / 系统设置 / PDF 阅读页
 | `src/renderer/src/styles/themes.css` | 三套主题的配色与两套世界的形态，五份文档共用这一份（谁把主题名写上去，见上一行） |
 | `src/renderer/src/styles/home.css` | 起始页自己的排版，以及**只在起始页**出现的扫描线与暗角 |
 | `src/shared/ipc.ts` | 三个进程共享的通道与载荷契约 |
+| `build/installer.nsh` | 安装器 / 卸载器的扩展钩子（`nsis.include` 引入，两次编译都带上）：进程检查、旧卸载器失败后的清场、我们这一版卸载器的删文件。**它跑在安装期间，没有界面、只有一份日志**（`%TEMP%\zhituan-install.log`），改动前务必先读第 23 条 |
 
 > 计划里原本把状态机拆成独立的 `windowStateMachine.ts`，实现时发现它与窗口编排放一起
 > 内聚性更好（状态迁移总是伴随窗口动作），故合并进 `windowController.ts`。

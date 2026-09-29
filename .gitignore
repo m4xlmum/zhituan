@@ -9,6 +9,10 @@ out/
 # 注意：build/ 不在此列，它用于存放图标等打包资源
 dist/
 release/
+# 打某版本时为了让 electron-builder 绕开既有 release/ 目录，会临时换一个全新输出
+# 目录 release-<版本>/（沙箱只允许移动文件、不允许移动既有目录）。归位到 release/
+# 之后这些目录就是历史残留，不该跟着仓库走。
+release-*/
 
 # 环境变量与本地配置
 .env

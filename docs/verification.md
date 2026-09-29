@@ -433,6 +433,28 @@ sleep 2; ./hook-remove.exe; echo "上锁退出码 $?"   # 期望 2
 应当把进程收干净，装完 `--force-run` 叫回来的是新版——不然用户会停在旧进程上，
 看着像没更新。
 
+**但那一条必须在正确的拓扑下跑。** 上面几个探针只有「收干净」一个判据，而真机上翻车的
+恰恰是**拓扑本身**：应用内更新时，安装程序是应用 `spawn` 出来的**子进程**，而它收旧进程
+那一句 `taskkill /F /T` 连子进程树一起收——**它把自己收走了**（Q80）。`e2e-upgrade.sh`
+是从 bash 起安装包的，父进程是 bash，**撞不上那个拓扑**，所以它一次都没照见这个 bug。
+
+```bash
+bash spike/nsis-abort-probe/kill-self.sh
+```
+
+`kill-self.sh` 把那个拓扑原样搭出来：假「应用」是 `node.exe` 的**拷贝**、改名成
+`zt-fakeapp.exe`（镜像名 = `APP_EXECUTABLE_FILENAME`；taskkill 认的就是镜像名，只有真
+拷贝才骗得过它），它用与应用一字不差的 `spawn(..., { detached: true, stdio: 'ignore' })`
+起探针 `kill-self.exe`，探针里跑的是**生产的** `customCheckAppRunning`。读数在
+`$TEMP\zt-probe-killself.txt`，A/B/C 三行：A 写在进宏之前、B 在宏走完时、C 在 `Sleep 8s`
+之后。**C 是必要的**——不留它，「正常走完自己退出」与「被自己杀掉」在进程表上长得
+一模一样（都是没了），外面就只剩 B 一个信号。判据是 **A、B、C 都在**，**且假应用已被
+杀掉**：只认前者的话，「什么都不杀」也能骗过它。
+
+夹具的 `TEMP`/`TMP` 被指到临时目录——探针的 `${zt.Log}` 写的是
+`$TEMP\zhituan-install.log`，而那正是**用户那份真机证据的路径**（那两次失败的现场就在
+里面）。脚本跑完会核一遍它的字节数与 mtime，变过就当场宣告这一轮读数作废。
+
 ```bash
 npx electron spike/tray-reveal.js
 ```
