@@ -41,7 +41,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import {
   DEFAULT_READER_FONT,
   DEFAULT_READER_LINE,
-  DEFAULT_READER_MARGIN
+  DEFAULT_READER_MARGIN,
+  DEFAULT_READER_PARA
 } from '@shared/constants'
 import {
   TXT_SCHEME,
@@ -51,6 +52,8 @@ import {
   formatMark,
   locateChapter,
   splitChapters,
+  splitParagraphs,
+  type TxtBlock,
   type TxtChapter
 } from '@shared/txt'
 import TypesetPanel from '../reader/TypesetPanel.vue'
@@ -66,6 +69,19 @@ const WHEEL_COOLDOWN_MS = 320
 const LINE_STEP = 90
 /** 翻页键一次滚掉正文区高度的比例。留一成让上一行还在，读起来不会跳丢 */
 const PAGE_STEP = 0.9
+/**
+ * 一份文本最多切几块才分段排。
+ *
+ * 分段排的意义是段距，而它要**一块一个元素**。一部小说切成章之后一段章只有几十块
+ * （用户那本平均一章 2400 字），随便排；真正会撞上这一条的是**一个章名都没有、
+ * 又长**的那种文件——整篇算一章，那本 6.75MB 的小说切出来是 **124857 块**，那是「一次
+ * 往 DOM 里塞十几万个盒子」，排一次要几秒，拖滑块会卡住整台机器。
+ *
+ * 于是超了就不分段：正文照旧是那一个文本节点（**这一版之前的样子**），字号、行距、
+ * 留白三项一样不少，只有段距对这一份文件不起作用。这个取舍是量出来的，
+ * 不是拍脑袋：见 docs/spike-findings.md 的 Q85。
+ */
+const PARA_MAX_BLOCKS = 3000
 
 const status = ref<'loading' | 'ready' | 'error'>('loading')
 const note = ref('正在打开这一份文件…')
@@ -160,6 +176,44 @@ const wholeFile = computed(
 /** 正在读的这一章。`slice` 一份新的字符串出来，与整篇文本不共用内存 */
 const bodyText = computed(() => (current.value ? chapterText(text.value, current.value) : ''))
 
+/**
+ * 这一章切成的「段」与「空行」——**只在段距大于 0 时才有值**。
+ *
+ * 值为 0（默认）时回 null，正文照旧是那一个文本节点：段落之间不加料，那时分段排
+ * 出来的结果与原先**逐像素相同**（见 @shared/txt 的 splitParagraphs），而少切一次、
+ * 少建十几个元素——「默认值 = 这一版之前的样子」在这条路上不只是看起来一样，
+ * 是连 DOM 都没动。
+ *
+ * 切出来超过 PARA_MAX_BLOCKS 同样回 null（理由见那个常量）：一份十几万行的文件
+ * 整篇算一章时，DOM 那一头比段距值钱。
+ */
+const blocks = computed<TxtBlock[] | null>(() => {
+  const para = config.value?.ui.readerParagraph ?? DEFAULT_READER_PARA
+  if (para <= 0 || status.value !== 'ready' || !current.value) return null
+  const list = splitParagraphs(bodyText.value)
+  if (list.length > PARA_MAX_BLOCKS) {
+    console.info(`[txt] 这一章 ${list.length} 块，超过分段上限，段距对它不生效`)
+    return null
+  }
+  return list
+})
+
+/**
+ * 段距那一行此刻能不能用。空串 = 能用。
+ *
+ * 值还是 0 的时候**必须能用**——否则用户永远打不开它（这一档的全部作用就是在 0 与
+ * 非 0 之间动）。于是问的是「已经开着的时候，这一章排得出来吗」：`blocks` 回了 null
+ * 就说明这一章超了上限，那正是段距对它不生效的那一种，面板上那一行就该是灰的
+ * （见 reader/TypesetPanel.vue 的 paraOff）。
+ *
+ * 没有额外的开销：`blocks` 本来就为渲染算过一次，这里是读它的结果。
+ */
+const paraOff = computed(() => {
+  const para = config.value?.ui.readerParagraph ?? DEFAULT_READER_PARA
+  if (para <= 0 || status.value !== 'ready') return ''
+  return blocks.value ? '' : '这一章太大（整篇算一章的文件），分段排不起，段距对它不生效'
+})
+
 function fail(err: unknown): void {
   note.value = `打不开这一份文件：${err instanceof Error ? err.message : String(err)}`
   status.value = 'error'
@@ -242,15 +296,16 @@ function reportSoon(): void {
 }
 
 /**
- * 把三项排版交给正文。
+ * 把四项排版交给正文。
  *
- * 写在 `:root` 上的自定义属性，styles/txt.css 里那两条规则直接引用它们（书页那一份走的是
- * 继承穿进 Shadow DOM 的路，见 BookApp）。于是配置一变只需改三个变量，这一章当场重排——
+ * 写在 `:root` 上的自定义属性，styles/txt.css 里那几条规则直接引用它们（书页那一份走的是
+ * 继承穿进 Shadow DOM 的路，见 BookApp）。于是配置一变只需改四个变量，这一章当场重排——
  * 不必重新解码，也不必重新渲染。
  *
  * 与书页**同源同值**：配置里只有一份字号（ui.readerFontSize / readerLineHeight /
- * readerMargin），两页读的是它。配置还没取回来时按 constants 里那三个默认值写一遍
- * （配置是异步的，而正文可能已经排好了），于是「默认值」这件事在本仓库仍只有一处。
+ * readerMargin / readerParagraph），两页读的是它。配置还没取回来时按 constants 里那四个
+ * 默认值写一遍（配置是异步的，而正文可能已经排好了），于是「默认值」这件事在本仓库仍只有
+ * 一处。
  */
 function applyTypeset(): void {
   const ui = config.value?.ui
@@ -258,6 +313,7 @@ function applyTypeset(): void {
   root.setProperty('--zhituan-reader-size', `${ui?.readerFontSize ?? DEFAULT_READER_FONT}px`)
   root.setProperty('--zhituan-reader-leading', String(ui?.readerLineHeight ?? DEFAULT_READER_LINE))
   root.setProperty('--zhituan-reader-margin', `${ui?.readerMargin ?? DEFAULT_READER_MARGIN}%`)
+  root.setProperty('--zhituan-reader-para', `${ui?.readerParagraph ?? DEFAULT_READER_PARA}em`)
 }
 
 /** 面板与目录一样，开着就别把浮层淡掉（不然拖到一半控件跑了） */
@@ -444,14 +500,15 @@ onMounted(async () => {
   applyTypeset()
   /*
    * 配置一变就重排。听的是**配置广播**（useConfig 那份镜像）而不是面板本身——
-   * 于是从别处改这三项（顶栏那枚 Aa 开的正是同一组控件），这一页也跟得上。
-   * 只改三个自定义属性就够了：浏览器自己会把这一章重排一遍。
+   * 于是从别处改这四项（顶栏那枚 Aa 开的正是同一组控件），这一页也跟得上。
+   * 只改四个自定义属性就够了：浏览器自己会把这一章重排一遍。
    */
   watch(
     () => [
       config.value?.ui.readerFontSize,
       config.value?.ui.readerLineHeight,
-      config.value?.ui.readerMargin
+      config.value?.ui.readerMargin,
+      config.value?.ui.readerParagraph
     ],
     () => applyTypeset()
   )
@@ -527,8 +584,25 @@ onBeforeUnmount(() => {
       <!--
         正文。**一个标签都不是别人给的**：这一句文本原样放进来，换行与段首那两个全角
         空格靠 styles/txt.css 的 `white-space: pre-wrap` 保住。
+
+        段距大于 0 时才改成一段一个盒子（blocks 有值的那条路）。每一块自己带着收尾的
+        换行，接起来与上面那一个文本节点**逐字相同**，排出来也逐像素相同——多出来的
+        只有段与段之间那一层（见 @shared/txt 的 splitParagraphs）。
+
+        文字用 `v-text` 写而不是插值：`pre-wrap` 会把模板里那些换行与缩进**原样排出来**
+        （段首会凭空多出几个空格），而 v-text 直接写 textContent，中间没有模板这一层。
       -->
-      <div v-if="status === 'ready'" ref="bodyEl" class="txt__body">{{ bodyText }}</div>
+      <div v-if="status === 'ready'" ref="bodyEl" class="txt__body">
+        <template v-if="blocks">
+          <div
+            v-for="(b, i) in blocks"
+            :key="i"
+            v-text="b.text"
+            :class="b.kind === 'gap' ? 'txt__gap' : 'txt__p'"
+          />
+        </template>
+        <template v-else>{{ bodyText }}</template>
+      </div>
     </div>
 
     <!-- 出错与进度都写在这一句里：这一页没有别的可说话的地方 -->
@@ -549,11 +623,11 @@ onBeforeUnmount(() => {
       </nav>
 
       <!--
-        排版面板。三项都只作用在**这一章**上，所以它长在这一页里，而不是右栏：
-        栏宽只够一排按钮，而这一组要三个滑块加三个读数。面板本身与书页共用一份
-        （see reader/TypesetPanel.vue）。
+        排版面板。四项都只作用在**这一章**上，所以它长在这一页里，而不是右栏：
+        栏宽只够一排按钮，而这一组要四个滑块加四个读数。面板本身与书页共用一份
+        （see reader/TypesetPanel.vue）；paraOff 是段距那一行不能用时给的一句话。
       -->
-      <TypesetPanel v-if="typesetOpen" />
+      <TypesetPanel v-if="typesetOpen" :para-off="paraOff" />
 
       <div class="hud" :class="{ off: !hudOn && !tocOpen && !typesetOpen }">
         <!-- 章名可以很长，浮层是个胶囊：截断（styles/txt.css），悬停仍看得到全文 -->
@@ -563,7 +637,7 @@ onBeforeUnmount(() => {
         <button
           class="hud__key"
           :class="{ on: typesetOpen }"
-          title="排版：字号、行距、左右留白（Esc 收起）"
+          title="排版：字号、行距、左右留白、段距（Esc 收起）"
           @click="toggleTypeset"
         >
           Aa

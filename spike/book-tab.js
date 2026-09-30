@@ -24,9 +24,17 @@
  * - **T3 翻章的两条真通道**：滚轮到章末再滚一下、方向键 `ArrowRight`。这两条都用
  *   `sendInputEvent` 送（走 Chromium 的输入通道），因此顺带把「这一页收不收得到
  *   真实输入」也量了——T2 里那个「被谁翻过去了」的怀疑，正是从这一头否掉的。
+ * - **T4 排版压得过书**：书里写死 `20px / 1.2 / #fff`，量用户那四项压不压得住、
+ *   改一下配置这一页跟不跟得上（不重载章节）。
+ * - **T4b 段距**（1.6.10 加的那一项）：值为 0 时那一张表**整张停用**——现场给一段
+ *   书自己写的 `p + p { padding-top: 33px }`，看它会不会被我们压平；拖上去再看它
+ *   当场落进 `p + p`。
+ * - **T4c padding 与 margin 的对照**（同一版）：书自己写着 `p { margin: 0 0 60px }`
+ *   时，同一份加法写在 `margin-top` 上会被合并吃掉、写在 `padding-top` 上原样落下去
+ *   ——这是「段距为什么不是 margin」那句话的读数。
  *
  * 跑法（两个环境坑见 spike/env-pitfalls.js）：
- *   env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+ *   /usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
  *     npx electron --no-sandbox --in-process-gpu spike/book-tab.js
  *
  * 产出：终端一份 [Tn] 报告、spike/out/book-tab.json
@@ -266,6 +274,54 @@ async function main() {
           左留白: css ? css.paddingLeft : null,
           // 留白是百分比，而计算样式给的是 px——要判它，就得知道那个百分比相对于谁
           正文宽: stage ? stage.clientWidth : null,
+          /*
+           * 段距（1.6.10）。落点是 p + p 的 padding-top，而那一张表在值为 0 时
+           * 是**整张停用**的（书自己写的 p { padding-top } 不该被压平）。
+           * 于是要量的有三样：那一张表在不在、停没停、以及第二段算出来的那个值。
+           * （这一段注释写在**模板字符串**里，因此全篇不许出现反引号。）
+           */
+          段块数: root ? root.querySelectorAll('p + p').length : 0,
+          第二段上间距: (() => {
+            const ps = root ? [...root.querySelectorAll('p')] : []
+            return ps.length > 1 ? getComputedStyle(ps[1]).paddingTop : null
+          })(),
+          /*
+           * T4c 那两档要用的：段与段之间**看得见的那一块空白**（前一段最后一个字的底
+           * 到后一段第一个字的顶），以及第二段的上外边距。前者是用户看得见的那件事，
+           * 后者只用来确认探针插的那条 margin 规则真的生效了（否则「没加上去」也可能
+           * 是根本没插上）。
+           *
+           * 量的是**内容盒**的边，不是 border 盒的边：padding 落在盒内侧，拿 border
+           * 盒去量的话，padding 那一版会量成「一动不动」——第一版就是这么量错的
+           * （读到的三档全是 60，看起来像我们对，其实只是尺子拿反了）。
+           */
+          段间距: (() => {
+            const ps = root ? [...root.querySelectorAll('p')] : []
+            if (ps.length < 2) return null
+            const 边 = (el, 侧) => {
+              const c = getComputedStyle(el)
+              const r = el.getBoundingClientRect()
+              return 侧 === 'top'
+                ? r.top + parseFloat(c.paddingTop || 0) + parseFloat(c.borderTopWidth || 0)
+                : r.bottom - parseFloat(c.paddingBottom || 0) - parseFloat(c.borderBottomWidth || 0)
+            }
+            return 边(ps[1], 'top') - 边(ps[0], 'bottom')
+          })(),
+          第二段上外边距: (() => {
+            const ps = root ? [...root.querySelectorAll('p')] : []
+            return ps.length > 1 ? getComputedStyle(ps[1]).marginTop : null
+          })(),
+          段距表: (() => {
+            if (!root) return null
+            const s = [...root.querySelectorAll('style')].find((e) =>
+              e.textContent.includes('--zhituan-reader-para')
+            )
+            if (!s) return null
+            return {
+              停用: s.disabled,
+              带important: s.textContent.includes('padding-top: var(--zhituan-reader-para')
+            }
+          })(),
           滚动: stage ? [stage.scrollTop, stage.scrollHeight, stage.clientHeight] : null,
           目录根数: root ? root.querySelectorAll('a').length : 0,
           写在屏幕上的一句话: document.querySelector('.note')?.textContent?.trim() ?? null
@@ -373,13 +429,30 @@ async function main() {
 
   mark('T4 排版三项')
   {
+    /*
+     * 两档都拿**配置里那份值**当尺子，不拿「默认值」当尺子。
+     *
+     * 这一跑拷的是**用户自己那一份配置**（见文件头），而用户拖过那几根条：2026-09-30
+     * 那一跑里他的行距是 1.75、留白是 4%，于是照 `DEFAULT_READER_*` 判的那两条全红了
+     * ——实现是对的，判据写错了。第一档真正要问的是「书里那两档压不压得住」，
+     * 而「压住之后落在哪儿」本来就该等于配置里那个数：书说 20px / 1.2，配置说
+     * 17px / 1.75 / 4%，量回来的就该是后者。
+     */
+    const 读配置 = async () =>
+      JSON.parse(
+        await 书页.webContents.executeJavaScript(
+          `window.zhituan.config.get().then((c) => JSON.stringify(c.ui))`
+        )
+      )
+    const 配置里 = await 读配置()
     const 默认 = await 读()
     /*
      * 走**书页自己那座桥**改配置——与右下角那颗「Aa」里拉一下滑块是同一条路
      * （`config.patch` → 广播回来 → 三个自定义属性跟着变）。
      */
+    const 改后 = { readerFontSize: 22, readerLineHeight: 2.1, readerMargin: 10 }
     await 书页.webContents.executeJavaScript(
-      `window.zhituan.config.patch({ ui: { readerFontSize: 22, readerLineHeight: 2.1, readerMargin: 10 } })`
+      `window.zhituan.config.patch({ ui: ${JSON.stringify(改后)} })`
     )
     await delay(700)
     const 调过 = await 读()
@@ -393,17 +466,14 @@ async function main() {
      */
     const 行距倍 = (r) => num(r?.行距) / (num(r?.字号) || 1)
     const 留白比 = (r) => num(r?.左留白) / (num(r?.正文宽) || 1)
+    /** 这一档读回来的，是不是就是配置里那三个数 */
+    const 对得上 = (r, ui) =>
+      Math.abs(num(r?.字号) - ui.readerFontSize) < 0.5 &&
+      Math.abs(行距倍(r) - ui.readerLineHeight) < 0.03 &&
+      Math.abs(留白比(r) - ui.readerMargin / 100) < 0.005
 
-    // 书里写死的是 20px / 1.2：读回来若还是它们，说明我们那一层没压住
-    const 压住了 =
-      Math.abs(num(默认?.字号) - 17) < 0.5 &&
-      Math.abs(行距倍(默认) - 1.85) < 0.03 &&
-      Math.abs(留白比(默认) - 0.06) < 0.005
-    // 而改完配置它得**当场**跟上，不必重新加载这一章
-    const 跟得上 =
-      Math.abs(num(调过?.字号) - 22) < 0.5 &&
-      Math.abs(行距倍(调过) - 2.1) < 0.03 &&
-      Math.abs(留白比(调过) - 0.1) < 0.005
+    const 压住了 = 对得上(默认, 配置里)
+    const 跟得上 = 对得上(调过, 改后)
 
     record(
       'T4',
@@ -412,18 +482,198 @@ async function main() {
       {
         书里style写的: 'body { font-size: 20px; line-height: 1.2 }',
         比的是比例: '行距 ÷ 字号、左留白 ÷ 正文宽（计算样式给的是 px）',
+        尺子是哪来的: '当前配置里那三个数（打开这一页时读一次）',
+        // 撞车了（配置恰好等于书里那两个数）这一档就量不出「谁压住谁」，记一笔
+        配置与书撞车: 配置里.readerFontSize === 20 || 配置里.readerLineHeight === 1.2,
+        打开时的配置: {
+          readerFontSize: 配置里.readerFontSize,
+          readerLineHeight: 配置里.readerLineHeight,
+          readerMargin: 配置里.readerMargin
+        },
         默认那一档: {
           读数: 默认,
           行距倍: 行距倍(默认),
-          留白比: 留白比(默认)
+          留白比: 留白比(默认),
+          对得上配置: 压住了
         },
         改成22px_2_1_10之后: {
           读数: 调过,
           行距倍: 行距倍(调过),
-          留白比: 留白比(调过)
+          留白比: 留白比(调过),
+          对得上配置: 跟得上
         }
       }
     )
+  }
+
+  // ------------------------------------------------------------ T4b 段距
+
+  mark('T4b 段距')
+  {
+    /*
+     * 先停在**最后一章**（这本探针书只有两章，于是就是第二章）。段距要「段与段
+     * 之间」，而第一章只有一个 `<p>`，`p + p` 一处也命中不了。走 `End` 那条真通道：
+     * 与目录点一下是同一条路（`show(total-1)`），却不必先开目录、也不必认 DOM。
+     */
+    await 书页.webContents.executeJavaScript(
+      `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'End' }))`
+    )
+    await delay(900)
+
+    /*
+     * 假装**书自己**写了段落内边距，好在现场分出「停用了」与「没停用」两种实现。
+     *
+     * 没停用的话，那一张表会写出 `padding-top: 0 !important`，把书自己这条 33px 压平
+     * ——而书的版式我们不动。插进这个 Shadow DOM，而不是改探针那本书的样式表：
+     * 那一本被 A13 与几支探针共用，动它会一起改掉它们的版面。
+     *
+     * 插的是**普通**声明（不带 `!important`），于是段距拖上去时我们那一张照样压得过它
+     * ——顺带把「我们那一层压得住书」也量在里面了。
+     */
+    const 报告_注入书自己那条 = await 书页.webContents.executeJavaScript(`(() => {
+      const root = document.querySelector('.sheet').shadowRoot
+      if (!root) return false
+      const s = document.createElement('style')
+      s.textContent = 'p + p { padding-top: 33px }'
+      root.appendChild(s)
+      return true
+    })()`)
+
+    const 段距0 = await 读()
+    await 书页.webContents.executeJavaScript(
+      `window.zhituan.config.patch({ ui: { readerParagraph: 1 } })`
+    )
+    await delay(700)
+    const 段距1 = await 读()
+    await 书页.webContents.executeJavaScript(
+      `window.zhituan.config.patch({ ui: { readerParagraph: 0 } })`
+    )
+    await delay(700)
+    const 又回到0 = await 读()
+
+    const num = (v) => Number.parseFloat(String(v ?? ''))
+    const 数值 = (r) => ({
+      段落数: r?.段块数 ?? null,
+      第二段上间距: r?.第二段上间距 ?? null,
+      段距表停用: r?.段距表?.停用 ?? null,
+      字号: r?.字号 ?? null
+    })
+    const 没问题 =
+      报告_注入书自己那条 === true &&
+      段距0.段距表?.停用 === true &&
+      段距0.段距表?.带important === true &&
+      Math.abs(num(段距0.第二段上间距) - 33) < 0.5 &&
+      段距1.段距表?.停用 === false &&
+      Math.abs(num(段距1.第二段上间距) - num(段距1.字号)) < 0.5 &&
+      又回到0.段距表?.停用 === true &&
+      Math.abs(num(又回到0.第二段上间距) - 33) < 0.5
+
+    record(
+      'T4b',
+      '段距：值为 0 时那一张表整张停用（书自己写的 p{padding-top} 不被压平）吗；拖上去当场落进 p + p 吗',
+      没问题 ? '是' : '不是',
+      {
+        书自己写的: 'p + p { padding-top: 33px }（探针插进 Shadow DOM 的普通声明）',
+        段距0: 数值(段距0),
+        段距1_应是字号那么多: 数值(段距1),
+        再拖回0: 数值(又回到0)
+      }
+    )
+  }
+
+  // ------------------------------------------------------------ T4c padding 与 margin 的对照
+
+  mark('T4c padding 与 margin 的对照')
+  {
+    /*
+     * 「段距为什么是 `padding-top` 而不是 `margin-top`」——这一档量的就是那句话本身。
+     *
+     * 书自己写段距时，最常见的是 `p { margin: 0 0 1em }` 这一类写法：**上外边距留 0**，
+     * 间距全靠上一段的下外边距。而相邻两段的 margin 会**合并**（取两者中大的那个，
+     * 不是相加），于是同一份加法写在 `margin-top` 上就变成了跟上一段那个更大的
+     * `margin-bottom` **比大小**——比它小的时候一点都落不到版面上，用户看到的是
+     * 「拖了没用」。`padding` 不参与合并，加多少就是多少。
+     *
+     * 三档同一份书（现场插一条 `p { margin: 0 0 60px }` 当作书自己的段距），只换我们
+     * 那一条写在哪：不写（基准）/ 写成 margin-top / 写成 padding-top（产品那一版）。
+     * 判据落在**段与段之间的间距**上：前两档必须一模一样（那就是那个坑），第三档才
+     * 多出一个字号那么多。
+     */
+    const 插表 = (文字) =>
+      书页.webContents.executeJavaScript(`(() => {
+        const root = document.querySelector('.sheet').shadowRoot
+        if (!root) return false
+        const s = document.createElement('style')
+        s.textContent = ${JSON.stringify(文字)}
+        root.appendChild(s)
+        return true
+      })()`)
+    const 撤表 = (片段) =>
+      书页.webContents.executeJavaScript(`(() => {
+        const root = document.querySelector('.sheet').shadowRoot
+        if (!root) return false
+        const s = [...root.querySelectorAll('style')].find((e) =>
+          e.textContent.includes(${JSON.stringify(片段)})
+        )
+        if (s) s.remove()
+        return true
+      })()`)
+
+    // T4b 插的那条先撤掉：它那 33px 会叠进这三档的间距里
+    await 撤表('p + p { padding-top: 33px }')
+    // 书自己的段距：只写下外边距
+    await 插表('p { margin: 0 0 60px }')
+    await delay(300)
+    const 基准 = await 读()
+
+    // 等价的 margin 写法：同一份加法（1em，此刻字号 22px）写在上外边距上
+    await 插表('p + p { margin-top: 22px }')
+    await delay(300)
+    const margin写法 = await 读()
+
+    // 换成产品真正的写法
+    await 撤表('p + p { margin-top: 22px }')
+    await 书页.webContents.executeJavaScript(
+      `window.zhituan.config.patch({ ui: { readerParagraph: 1 } })`
+    )
+    await delay(700)
+    const padding写法 = await 读()
+
+    const 数 = (v) => Number.parseFloat(String(v ?? ''))
+    const 间距 = (r) => 数(r?.段间距)
+    const 字号 = 数(padding写法?.字号)
+    const margin那条真用上了 = Math.abs(数(margin写法?.第二段上外边距) - 22) < 0.5
+    const 一样 = Math.abs(间距(margin写法) - 间距(基准)) < 1
+    const 加上了 = Math.abs(间距(padding写法) - (间距(基准) + 字号)) < 1
+
+    record(
+      'T4c',
+      '同一份段距加法：写在 margin-top 上会被书自己的 margin 吃掉吗，写在 padding-top 上原样落下去吗',
+      margin那条真用上了 && 一样 && 加上了 ? '是' : '不是',
+      {
+        书自己的段距: 'p { margin: 0 0 60px }（现场插进 Shadow DOM）',
+        量的是: '前一段最后一个字的底到后一段第一个字的顶（内容盒的边）',
+        基准_我们什么都不写: { 段间距: 间距(基准), 第二段上外边距: 基准?.第二段上外边距 },
+        margin写法: {
+          段间距: 间距(margin写法),
+          第二段上外边距: margin写法?.第二段上外边距,
+          与基准一样: 一样
+        },
+        padding写法_产品这一版: {
+          段间距: 间距(padding写法),
+          第二段上内间距: padding写法?.第二段上间距,
+          比基准多出一个字号: 加上了,
+          此刻的字号: 字号
+        }
+      }
+    )
+
+    // 收干净：段距归 0，书自己那条 60px 也撤掉，不影响后面 T5 的版面
+    await 书页.webContents.executeJavaScript(
+      `window.zhituan.config.patch({ ui: { readerParagraph: 0 } })`
+    )
+    await 撤表('p { margin: 0 0 60px }')
+    await delay(500)
   }
 
   // ------------------------------------------------------------ T5 接着上次读

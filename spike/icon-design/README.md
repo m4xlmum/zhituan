@@ -20,7 +20,11 @@ python make_ico.py A        # 把方案 A 打成三个 ico/png
   进程会被执行环境掐掉（SIGTERM），`--no-sandbox --in-process-gpu` 也一样 ——
   而上一轮探针还能跑，所以这不是参数问题。另有一个坑：环境里设了
   `ELECTRON_RUN_AS_NODE=1`，`VAR=` 这种空值前缀清不掉它（判的是「存在」而非真值），
-  得 `env -u ELECTRON_RUN_AS_NODE`。
+  得用 `env -u ELECTRON_RUN_AS_NODE`。
+  （**2026-09-30 补一句**：这里写的 `env` 在本机 PATH 上被 `~/.local/bin/env` 遮住了
+  ——那是一份 328 字节的 shell 片段，不看参数也不执行后面的命令，于是 `env -u …` 全程
+  空转、退出码 0。要清得写成 `/usr/bin/env -u …`，或者用 shell 内建的 `unset`。
+  详见 [docs/verification.md](../../docs/verification.md) 开头那一段。）
 - **Pillow 装不上**。pypi 官方源下载 7.2MB 卡在代理上（约 35KB/s，十分钟没动），
   清华源直接返回 `from versions: none`。
 

@@ -8,15 +8,34 @@
 > 拿到的只是二进制的路径字符串，不是 `app`。这时清掉那两个变量、并绕开 `npx` 直接点二进制：
 >
 > ```bash
-> env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+> /usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
 >   ./node_modules/electron/dist/electron.exe spike/media-pause.js
 > ```
+>
+> **`env` 前面那个 `/usr/bin/` 不能省**。本机 PATH 上第一个 `env` 是
+> `~/.local/bin/env`——一份 328 字节的 shell 片段（就是那段「把 ~/.local/bin 加进
+> PATH」的样板，被存成了文件），它**不看参数、也不执行后面的命令**，只 export 一句
+> PATH 就退出。于是 `env -u … electron …` 的表现是**一声不响、退出码 0、什么都没跑**
+> （2026-09-30 为此白查了两跑：探针的日志是空的，`spike/out/*.json` 根本没生成）。
+> 退一步的写法是 `unset ELECTRON_RUN_AS_NODE; …`（shell 内建，没有这个问题），
+> 或干脆省掉——本机那个变量本来就没设。**`ELECTRON_RUN_AS_NODE=` 那种空值前缀不行**：
+> Electron 判的是「这个变量在不在」，不是它的值（实测仍是 `bad option: --no-sandbox`）。
 >
 > 同一类环境里 GPU 进程往往起不来（`GPU process exited unexpectedly: exit_code=-1073741819`
 > 紧接着 `GPU process isn't usable. Goodbye.`），加 `--disable-gpu --no-sandbox` 即可——
 > 探针量的都是 DOM 层的事实，软渲染不影响结论。另外 `app.exit()` 之后主进程有时会挂在
 > 管道上不退，收尾看一眼 `tasklist | grep electron`，必要时 `taskkill /F /IM electron.exe`。
-> 这三条都只是本机的跑法，与仓库里的代码无关。
+> 这几条都只是本机的跑法，与仓库里的代码无关。
+>
+> **跑之前先 `node --check spike/xxx.js`**。探针在**加载期**出的语法错（模板字符串里
+> 少一个反引号是最常见的一种）不会写进重定向的日志里，Electron 会**弹一个错误框**——
+> 那是一个真的窗口，会挡在用户屏幕上，而且不点掉进程就一直不退（2026-09-30 撞过一次，
+> 探针"跑了四分钟还没完"其实是那个框在等人点）。`node --check` 一秒就能把这类错误
+> 挡在跑之前：
+>
+> ```bash
+> for f in spike/*.js spike/*.cjs; do node --check "$f" || echo "语法不过：$f"; done
+> ```
 
 ```bash
 npx electron spike/index.js
@@ -563,7 +582,7 @@ JSON 里的 `rightButtons` 是顶栏右侧那排按钮的顺序与坐标（`topI
 外加**右边那一组的起点**——后一个数才是判据：它必须 ≥ 这枚键的右沿，否则这枚键
 就把窗口操作组压住了（那种情形探针打 `TYPESET_KEY_BAD` 并当场 `exit(1)`）。
 `禁用` 那一格两态各是一句话：读网页时 true（提示语让人先打开一本），
-读本机 TXT 时 false 且 `on` 为 true（`--reader`）——真机上「点它开面板、面板里拖三项」
+读本机 TXT 时 false 且 `on` 为 true（`--reader`）——真机上「点它开面板、面板里拖四项」
 那一半由 `txt-typeset.js` 量，这里只量预览这两态的形状。
 顶栏的 `stripFits` / `tabBoxes` / `lastTabOverflow` / `fallback` 几项是给标签条用的：
 让位了没有、每一格的宽度、最后一格有没有被容器啃掉一条边。`tabBoxes` 里的
@@ -780,6 +799,43 @@ Q9 的最后一头只能量**合成之后的窗口**：CSS 底色是合成器做
 `spike/out/pdf-scheme-<素材>.json`。
 
 ```bash
+/usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+  npx electron --no-sandbox --in-process-gpu spike/pdf-tab.js
+```
+
+**在真身上开一份本机 PDF**（Q86）。上面两支都够不着这一格：`pdf-scheme.js` 自己把那条
+协议的特权交上去（主进程那一层是它自己摆的台面），`pdf-render.js` 连页面都是自己那一份
+副本——于是「**真主进程**打开一份本机 PDF 会怎么样」一直没人量过，而 1.6.9 的「本机
+EPUB 与 PDF 一起打不开」正是从这一格进去的。三问：**P1 接线**（视图里加载的**是**自家
+阅读页，且场上**没有**哪一屏加载的正是那个 `.pdf` 本身）、**P2 阅读页自己 fetch 得到
+那份字节**（字节数与磁盘上那份一模一样、头四个字节 `%PDF`——从**页面里**取，不是从主
+进程取：坏掉的正是渲染进程这一头，主进程那边 `isProtocolHandled` 一直是 true）、
+**P3 pdf.js 运行时按需取的那几样资源**（cmap 与 wasm 各一份，内容类型与魔术字一并记下
+——`application/wasm` 与 `0061736d` 都不能错，pdf.js 走的是 `instantiateStreaming`）。
+素材 `spike/out/fixtures/panel.pdf` 由 `pdf-render.js fixtures` 造。读数落
+`spike/out/pdf-tab.json`。跑之前一句 `app.setAppPath(ROOT)`：那几样资源是主进程按
+`app.getAppPath()` 找的，而 `electron <一支探针>` 起的进程里它是**探针所在的目录**
+（Q57 记的是同一件事的另一种坏法）。
+
+```bash
+/usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+  npx electron --no-sandbox --in-process-gpu spike/reader-schemes.js
+```
+
+**三条阅读协议的特权只能有一次调用**（Q86）——`protocol.registerSchemesAsPrivileged()`
+**只认最后一次调用**，分开调几次，前几次当场作废。四面：**S1 静态**（扫 `src/main`
+底下所有 `.ts`：那个调用在**代码**里只许出现一处，且三份声明名都要在里面；注释里提到
+这个写法的行不算——它挡的是「下一个人又在自己模块里加一句」）、**S2 一次交三条**
+（交的是产品那三份声明 `XXX_SCHEME_PRIVILEGED`、页面用 `file:` 载，三条 `fetch` 都要
+200；另有**对照**：一条从没交过特权的协议必须抛，否则这一问没有分辨力）、
+**S3 反面**（照 1.6.9 的写法分开交三次：前两条抛、只有最后一条 200——这是 `index.ts`
+那段注释的原始证据）、**S4**（三份特权形状逐条相同，「合起来交一次等于各交一次」
+的根据）。S2 与 S3 **必须分进程**（特权是进程一级的东西，一次绑定终身有效），因此
+不带 `--face=` 时外层先 esbuild 打出台面、再把自己重开两次。读数落
+`spike/out/reader-schemes-once.json` 与 `-split.json`。产品那一侧的判据是
+`book-tab.js` 的 T1 与 `pdf-tab.js`。
+
+```bash
 npx electron spike/epub-import.js
 ```
 
@@ -794,7 +850,7 @@ ZIP + XHTML，`node:zlib` 加四十行中央目录解析就能解完（5 条 / 0
 这句话是错的——运行时依赖仍是 3 个。
 
 ```bash
-env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+/usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
   npx electron --no-sandbox --in-process-gpu spike/book-page.js
 ```
 
@@ -807,7 +863,7 @@ alpha 129，而**不透明像素占比两档逐位相同** 0.0055）。
 
 ```bash
 python spike/make-test-epub.py
-env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+/usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
   npx electron --no-sandbox --in-process-gpu spike/book-open.js
 ```
 
@@ -823,20 +879,25 @@ env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
 两份日志落 `spike/out/book-page.log` 与 `spike/out/book-open.log`。
 
 ```bash
-env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+/usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
   npx electron --no-sandbox --in-process-gpu spike/book-tab.js
 ```
 
 这一条是上一支的**减法**：同样是真 EPUB、真主进程，但只问那一件最要紧的事——
 **开一本 EPUB 之后，视图里到底加载了什么**。Q66 用的是「自己拼好阅读页地址再喂给
 窗口」，恰好跳过了 `TabManager.create()` 里那一步，于是「`kind` 判成 `'book'`、视图
-加载的却是那个 `.epub` 本身」这个洞它照不出来（详见 Q67）。三问：**T1 接线**
+加载的却是那个 `.epub` 本身」这个洞它照不出来（详见 Q67）。七问：**T1 接线**
 （按整条地址逐字认那一屏是 `book.html?doc=…`，**并且**场上没有任何一屏加载的正是那个
 `.epub`）、**T2 读数按时间走一遍**（每 300ms 读一次，连读 15 次——只看终值分不清
 「一开始就在第二章」与「读着读着被谁翻过去了」）、**T3 翻章的两条真通道**
-（`sendInputEvent` 送滚轮与方向键，顺带证明这一页收得到真实输入）、**T4 排版三项**
-（书里写死 `20px / 1.2`，读回来的必须是我们的 17px 与 1.85；再从**书页自己那座桥**
-`config.patch` 一次，看这一页当场跟不跟得上——桥不在就当场抛，Q69 就是这么抓到的）、
+（`sendInputEvent` 送滚轮与方向键，顺带证明这一页收得到真实输入）、**T4 排版四项**
+（书里写死 `20px / 1.2`，读回来的必须是**当前配置里那一组**——拿应用默认值当尺子是
+错的，用户自己拖过那几根条；再从**书页自己那座桥** `config.patch` 一次，看这一页当场
+跟不跟得上——桥不在就当场抛，Q69 就是这么抓到的）、**T4b 段距**（现场给书插一条
+`p + p { padding-top: 33px }`：段距为 0 时我们那张表必须**整张停用**、书那条原样读回
+33px，拖到 1 时表可用、第二段读回**字号**那么多，拖回 0 又见 33px）、
+**T4c padding 与 margin 的对照**（书里写 `p { margin: 0 0 60px }` 时同一份加法两处各写
+一遍：`margin-top` 那一版间距纹丝不动 60 → 60，`padding-top` 那一版 60 → 82）、
 **T5 接着上次读**（在第二章里滚到六成，再开一屏同一本书，看它回不回得到那一章那一处，
 比的是章内比例而不是像素）。读数落 `spike/out/book-tab.json`。
 
@@ -844,7 +905,7 @@ env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
 那个目录，是 Q68 的判据（那一跑当时留下过一个只有 4 个条目的 `zhituan`）。
 
 ```bash
-env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-page.js
+/usr/bin/env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-page.js
 ```
 
 本机 TXT 那一页**长什么形状**。它不 require 真主进程——一只手搭起
@@ -858,7 +919,7 @@ env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-page.js
 ——要看像素请用下面那一支。`--no-sandbox` 在这个宿主里必须加（见文件头那段）。
 
 ```bash
-env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-big-opacity.js
+/usr/bin/env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-big-opacity.js
 ```
 
 **几百万像素高的那一本上，阅读透明度还成不成立**（Q77 的前半截）。`txt-page.js`
@@ -871,8 +932,8 @@ env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-big-opacity.js
 `spike/out/txt-big-opacity.json`，像素没跟着动就以非零码退出。
 
 ```bash
-env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js
-env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js --w 960 --h 540
+/usr/bin/env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js
+/usr/bin/env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js --w 960 --h 540
 ```
 
 **右栏那条「阅读」滑块到底被谁接着**（Q77），外加右栏最上面那两格开关换了排法之后
@@ -897,20 +958,23 @@ env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/rail-hit.js --w 960 
 同左边界，按下去配置 `{收起时暂停: true, 切走时暂停: true}` → `{false, true}`。
 
 ```bash
-env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-typeset.js
+/usr/bin/env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-typeset.js
 ```
 
-**排版三项端到端走一遍**（Q78）。四问：① 默认那一组（17px / 1.85 / 6%）有没有落到
+**排版四项端到端走一遍**（Q78）。四问：① 默认那一组（17px / 1.85 / 6%）有没有落到
 那个 `pre` 上——量的是 `getComputedStyle` **算出来的值**，不是我们写进去的那串字，
 因为「写进去了没生效」正是这一条最可能的坏法；② 顶栏那枚 Aa 在不在、读本机文本时
-可用、**切到一张网页就禁用**；③ 点它 → 排版面板（320×260）从主进程里认出来、**摆在
-锚点下方**、三行读数与配置一致、内容放得下不裁；④ 在面板里拖字号 / 留白 / 行距，
-TXT 那一页**当场**变（26px、内边距归 0、行距 62.4px），且三条互不串动，文档高从
-726 万涨到 1286 万再到 1578 万像素。读数落 `spike/out/txt-typeset.json`。
+可用、**切到一张网页就禁用**；③ 点它 → 排版面板（320×300）从主进程里认出来、**摆在
+锚点下方**、**四行**读数与配置一致、内容放得下不裁（`clientH 265 = scrollH 265`，
+裁掉了 0）；④ 在面板里拖字号 / 留白 / 行距 / **段距**，TXT 那一页**当场**变
+（26px、内边距归 0、行距 62.4px；段距拉到 1 时段块数 0 → 52、第二块的上内边距
+**26px = 字号 × 1em**、第一块 0px，而**正文长 2669 一字不变**），且四项互不串动，
+正文的内容高依次 9222 → 8837 → 11410 → 12736 像素（`.stage` 的内容高；留白归 0
+那一档反而变矮，是因为行变长了、折行少了）。读数落 `spike/out/txt-typeset.json`。
 
 ```bash
-env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-resume.js
-env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-resume.js --txt <路径>
+/usr/bin/env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-resume.js
+/usr/bin/env -u ELECTRON_RUN_AS_NODE npx electron --no-sandbox spike/txt-resume.js --txt <路径>
 ```
 
 **本机 TXT 的章区分与续读，端到端走一遍**（Q84）——用户那句「读 TXT 记不住读到哪儿」
@@ -930,10 +994,12 @@ T5 把这一屏切到眼前、跳到很靠后的一章，再开一屏——**回
 `reading.json` 这一支**刻意不抄**用户那份——要看的正是「从零开始读，它记得住吗」，
 带着用户自己那份账进来就分不清哪一条是这一跑记下的。读数落 `spike/out/txt-resume.json`。
 
-`live-app.js`、`book-tab.js`、`txt-big-opacity.js`、`rail-hit.js`、`txt-typeset.js`
-与 `txt-resume.js` 都要 `require` 真主进程，因此**两道隔离缺一不可**：
+`live-app.js`、`book-tab.js`、`pdf-tab.js`、`txt-big-opacity.js`、`rail-hit.js`、
+`txt-typeset.js` 与 `txt-resume.js` 都要 `require` 真主进程，因此**两道隔离缺一不可**：
 `app.setPath('appData', TEMP)` **与** `app.setPath('userData', TEMP)`。只改 userData
 挡不住改名搬迁——`migrateLegacyUserData()` 读的是 `appData`。理由与现场见 Q68。
+**不 require 主进程的也要**：`reader-schemes.js` 开的是一扇真窗口、用的是
+`persist:zhituan` 那个分区，一样会落到用户的目录里，一样会抢缓存锁。
 
 **1.6.5 起 `preview.js` 也走同一套隔离**，虽然它不用 `require` 主进程（见 Q79）。
 这一支原先什么都没设，于是 Chromium 的 `Cache` / `GPUCache` 落在**用户当前那个应用**

@@ -13,7 +13,7 @@
  * 对照 docs/spike-findings.md 的 Q63（章节当独立文档加载，占比 0.97）。
  *
  * 跑法（两个环境坑见 spike/env-pitfalls.js）：
- *   env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+ *   /usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
  *     npx electron --no-sandbox --in-process-gpu spike/book-page.js
  *
  * SPDX-License-Identifier: GPL-2.0-or-later

@@ -34,6 +34,22 @@
  * 东西一个都不动。退出时那次 `removeTemp()` 仍然留着（Linux / macOS 上它是真能
  * 删掉的），只是不再指望它。
  *
+ * **第 7 条：本机上 `env -u …` 是一句空转。** 挡 `ELECTRON_RUN_AS_NODE` 的常用写法
+ * 是给命令套一层 `env -u`（第 8 条说为什么要挡），而本机 PATH 上排第一的 `env` 是
+ * `~/.local/bin/env`——一份 328 字节的 shell 片段（那段「把 ~/.local/bin 加进 PATH」
+ * 的样板被存成了文件），它**不看参数、也不执行后面的命令**，只 export 一句 PATH 就
+ * 退出。于是整条命令的表现是**一声不响、退出码 0、什么都没跑**：探针的日志是空的，
+ * `spike/out/*.json` 根本没生成（2026-09-30 为此白查了两跑，一度以为探针自己坏了）。
+ * 要挡住那个变量，写 `/usr/bin/env -u …`（coreutils 那个），或者 `unset …`（shell 内建）。
+ * `VAR=` 那种空值前缀也不行——Electron 判的是「这个变量在不在」（见第 8 条）。
+ *
+ * **第 8 条：`ELECTRON_RUN_AS_NODE` 一设，electron 二进制就退化成普通 Node。**
+ * `--no-sandbox` 会被它当成自己的选项，报 `bad option: --no-sandbox`（退出码 9）；
+ * `require('electron')` 拿到的也只是二进制的路径字符串，于是报错变成
+ * `Cannot read properties of undefined (reading 'whenReady')`。有些宿主 shell 会替
+ * 用户设上它（本项目的几次探针就是这么被坑的）。判据是**变量在不在**而不是它的值：
+ * `ELECTRON_RUN_AS_NODE=` 这种空值前缀照旧退化（实测）。
+ *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 const { app, BrowserWindow } = require('electron')

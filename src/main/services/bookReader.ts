@@ -40,7 +40,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-import { protocol, type Session } from 'electron'
+import type { Session } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { extname } from 'node:path'
@@ -155,24 +155,23 @@ const archiveByToken = new Map<string, Archive>()
 const MAX_HELD_ARCHIVES = 4
 
 /**
- * 注册协议名。**必须在 app ready 之前调用**（特权只能在那之前声明），
- * 因此 index.ts 里它挨着 registerPdfScheme()。
+ * 这条协议的特权声明。
+ *
+ * **这里只交名字，不负责注册**：`protocol.registerSchemesAsPrivileged()` 只认
+ * **最后一次调用**，而 1.6.9 加进第三条（TXT）时，前两条就是这么一起哑掉的
+ * ——三条一起交的写法与读数见 index.ts 的 registerReaderSchemes。
  */
-export function registerBookScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: BOOK_SCHEME,
-      privileges: {
-        // standard：按 `协议://主机/路径` 解析，主机名才能当 token 用，
-        // 而且 `..` 会被 URL 自己归一化掉（书里的相对地址全靠这一条）
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        stream: true,
-        corsEnabled: true
-      }
-    }
-  ])
+export const BOOK_SCHEME_PRIVILEGED: Electron.CustomScheme = {
+  scheme: BOOK_SCHEME,
+  privileges: {
+    // standard：按 `协议://主机/路径` 解析，主机名才能当 token 用，
+    // 而且 `..` 会被 URL 自己归一化掉（书里的相对地址全靠这一条）
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    stream: true,
+    corsEnabled: true
+  }
 }
 
 /**

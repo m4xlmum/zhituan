@@ -32,10 +32,11 @@
  *
  * ## 另外两组东西，各有一条自己的规矩
  *
- *   · **排版三项**（字号 / 行距 / 左右留白，右下角那颗「Aa」）落在书的样式表**之后**，
- *     并且带 `!important`——书里动不动就写死 `body { font-size: 20px }`，而用户拉一下
- *     字号就该看见字变了，被书锁住会让控件看起来是坏的。同一处还写了为什么
- *     **不动上下留白、也不动 margin**（那是书的版式）。
+ *   · **排版四项**（字号 / 行距 / 左右留白 / 段距，右下角那颗「Aa」）落在书的样式表
+ *     **之后**，并且带 `!important`——书里动不动就写死 `body { font-size: 20px }`，而用户
+ *     拉一下字号就该看见字变了，被书锁住会让控件看起来是坏的。同一处还写了为什么
+ *     **不动上下留白、也不动 margin**（那是书的版式）。第四项（段距）另有一张自己的
+ *     样式表，值为 0 时整张停用——理由见 READER_PARA 与 paraSheet 那两段。
  *   · **续读**（读到哪一章、章内的百分之几）由主进程写成地址里的两个参数带进来，
  *     翻页与停滚时再凭 token 报回去。用**比例**而不是像素：排版一变（用户拉字号、
  *     窗口换个宽度），同一段的像素高度就不同，记下的像素值会落在半页之外。
@@ -46,7 +47,8 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import {
   DEFAULT_READER_FONT,
   DEFAULT_READER_LINE,
-  DEFAULT_READER_MARGIN
+  DEFAULT_READER_MARGIN,
+  DEFAULT_READER_PARA
 } from '@shared/constants'
 import { loadChapter, openBook, type Book, type TocItem } from './epub'
 import TypesetPanel from '../reader/TypesetPanel.vue'
@@ -92,7 +94,7 @@ a { color: var(--zhituan-accent); }
 `
 
 /**
- * 用户调的那三项排版（字号 / 行距 / 左右留白）。
+ * 用户调的那四项排版（字号 / 行距 / 左右留白 / 段距）。
  *
  * **位置与 `!important` 都是必需的**，两者缺一就压不住书：
  *
@@ -112,6 +114,7 @@ a { color: var(--zhituan-accent); }
  * **只管左右留白，不动上下，也不动 margin。** 上下那两段留白是书自己的版式
  * （标题页、诗歌、封面都靠它），收掉会毁掉那些页；而 `body { margin-top: 48px }`
  * 正是书的选择器命中这一层的证据（见文件头第 1 条），它没有理由被我们归零。
+ * 段距（READER_PARA 那一张）管的是段落**之间**，那是另一件事，也不在这几条里。
  */
 const READER = `
 body {
@@ -121,6 +124,30 @@ body {
   padding-right: var(--zhituan-reader-margin, ${DEFAULT_READER_MARGIN}%) !important;
 }
 `
+
+/**
+ * 段距。**只写在段落之间**，而且**整张样式表默认是停用的**（见 paraSheet）。
+ *
+ * 落点是 `p + p`：书里的段落本来就是一个一个 `<p>`，于是「段与段之间」这句话有一个
+ * 现成的对象。（用 `<br>` 或 `<div>` 排段落的书不受它影响——那种书里没有「段」这个
+ * 结构，这一条也就无从落起，与 Chromium 排出来的 `pre` 是同一种情况。）
+ *
+ * 写的是 `padding-top` 而不是 `margin-top`：书的段落之间本来就有自己的 margin
+ * （UA 给 `p` 的是 `1em 0`），而 margin 会**折叠**——折叠取大的那一个，于是滑块
+ * 下半程会看起来什么也没做。padding 加在盒子里侧，只加不减，从头到尾都跟手。
+ *
+ * 单位是 em（`--zhituan-reader-para` 写的就是 `0.5em` 这种），于是它跟着这一段
+ * 自己的字号走：字号拉大，段与段之间一起拉开——与行距那条无单位倍数同一个道理。
+ */
+const READER_PARA = `
+p + p { padding-top: var(--zhituan-reader-para, 0em) !important; }
+`
+
+/**
+ * 这一章里没有 `p + p` 时，段距那一行灰掉并挂上这一句（见 show）。
+ * 灰掉一个控件而不说为什么，用户只会以为它坏了。
+ */
+const PARA_OFF_HINT = '这一章里没有段落结构（书用 <br> 或 <div> 排的版），段距没有对象'
 
 /**
  * 把书自己的那张纸收掉。
@@ -144,12 +171,19 @@ const tocOpen = ref(false)
 /** 排版面板开着没有。与目录同一规矩：开着就别把浮层淡掉 */
 const typesetOpen = ref(false)
 const hudOn = ref(true)
+/** 段距那一行不能用时给面板的一句话，空串 = 能用（判据见 show 里那一段） */
+const paraOff = ref('')
 
 const stage = ref<HTMLDivElement | null>(null)
 const sheet = ref<HTMLDivElement | null>(null)
 
 /** 章节各自的 Shadow DOM 挂在同一个宿主上，这里只 attach 一次 */
 let shadow: ShadowRoot | null = null
+/**
+ * 段距那一张样式表（READER_PARA）。**每次切章都会重造**（见 show），
+ * 于是它是有时有、有时无的一个引用，值由 applyPara 每次现读配置。
+ */
+let paraSheet: HTMLStyleElement | null = null
 /** 每次切章 +1。切得快时，前一次的结果到了就丢掉，避免两章互相覆盖 */
 let shownToken = 0
 let wheelAcc = 0
@@ -275,13 +309,29 @@ async function show(at: number, hash = '', restoreRatio = 0): Promise<void> {
   if (mine !== shownToken) return
 
   shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' })
+  paraSheet = style(READER_PARA)
+  // 先停用再挂上去：插进去到 applyPara 读到配置之间还有一瞬，那一瞬它是默认值 0 那一态
+  paraSheet.disabled = true
   shadow.replaceChildren(
     style(DEFAULTS),
     ...loaded.styles.map((l) => document.importNode(l, true)),
     style(READER),
+    paraSheet,
     style(CLEAR),
     document.importNode(loaded.body, true)
   )
+  // 这一张是新造的，段距那一档此刻的值要现读一次配置（见 applyPara）
+  applyPara()
+  /*
+   * 这一章排不排得出「段」——问的就是我们那条规则本身会不会命中
+   * （READER_PARA 的 `p + p`）。书用 `<br>` 或 `<div>` 排段落时没有这个结构，
+   * 那一行就该是灰的（见 TypesetPanel 的 paraOff）。
+   *
+   * 判据与规则同形，因此不会出现「说得能用、拉下去没反应」：命中一处就够。
+   * 一章查一次，正是这一章的内容。
+   */
+  paraOff.value =
+    shadow.querySelector('p + p') === null ? PARA_OFF_HINT : ''
 
   if (stage.value) stage.value.scrollTop = 0
   status.value = 'ready'
@@ -341,11 +391,26 @@ function reportSoon(): void {
 }
 
 /**
- * 把三项排版交给 Shadow DOM 里的正文。
+ * 把段距那一档交给书页。
+ *
+ * 值是 0（默认）时**整张样式表停用**，而不是让它写出 `padding-top: 0 !important`
+ * ——那一条会把书自己写的 `p { padding-top: .4em }` 一起压平，而书的版式我们不动
+ * （与 READER 那一段「不动上下 margin」是同一条规矩）。停用就没有那条声明，
+ * 书说多少还是多少。
+ *
+ * 新造出来的那张默认是停用的：配置还没取回来时正是默认值 0 那一态。
+ */
+function applyPara(): void {
+  const para = config.value?.ui.readerParagraph ?? DEFAULT_READER_PARA
+  if (paraSheet) paraSheet.disabled = !(para > 0)
+}
+
+/**
+ * 把四项排版交给 Shadow DOM 里的正文。
  *
  * 写在 `:root` 上：自定义属性是可继承属性，而从 `html` 一路继承到阴影里的 body
  * 正是这条路（`--zhituan-zoom`、`--zhituan-surface-rgb` 走的也是它）。于是配置一变
- * 只需改三个变量，书页当场重排——不必重新注入样式表，也不必重新加载这一章。
+ * 只需改四个变量，书页当场重排——不必重新注入样式表，也不必重新加载这一章。
  */
 function applyTypeset(): void {
   const ui = config.value?.ui
@@ -354,6 +419,8 @@ function applyTypeset(): void {
   root.setProperty('--zhituan-reader-size', `${ui.readerFontSize}px`)
   root.setProperty('--zhituan-reader-leading', String(ui.readerLineHeight))
   root.setProperty('--zhituan-reader-margin', `${ui.readerMargin}%`)
+  root.setProperty('--zhituan-reader-para', `${ui.readerParagraph}em`)
+  applyPara()
 }
 
 /** 面板与目录一样，开着就别把浮层淡掉（不然拖到一半控件跑了） */
@@ -569,14 +636,15 @@ onMounted(async () => {
   applyTypeset()
   /*
    * 配置一变就重排。听的是**配置广播**（useConfig 那份镜像）而不是面板本身——
-   * 于是从别处改这三项，这一页也跟得上，与起始页换主题听的是同一条广播。
-   * 只改三个自定义属性就够了：浏览器自己会把这一章重排一遍。
+   * 于是从别处改这四项，这一页也跟得上，与起始页换主题听的是同一条广播。
+   * 只改四个自定义属性就够了：浏览器自己会把这一章重排一遍。
    */
   watch(
     () => [
       config.value?.ui.readerFontSize,
       config.value?.ui.readerLineHeight,
-      config.value?.ui.readerMargin
+      config.value?.ui.readerMargin,
+      config.value?.ui.readerParagraph
     ],
     () => applyTypeset()
   )
@@ -656,19 +724,20 @@ onBeforeUnmount(() => {
       </nav>
 
       <!--
-        排版面板。三项都只作用在**正在读的这一页**上，所以它长在这一页里，
-        而不是右栏：栏宽只够一排按钮，而这一组要三个滑块加三个读数。
+        排版面板。四项都只作用在**正在读的这一页**上，所以它长在这一页里，
+        而不是右栏：栏宽只够一排按钮，而这一组要四个滑块加四个读数。
         与目录同一规矩——盖在正文上、开着就不淡出（见 toggleTypeset）。
-        面板本身与 TXT 那一页共用一份（see reader/TypesetPanel.vue）。
+        面板本身与 TXT 那一页共用一份（see reader/TypesetPanel.vue）；
+        paraOff 是段距那一行不能用时给的一句话。
       -->
-      <TypesetPanel v-if="typesetOpen" />
+      <TypesetPanel v-if="typesetOpen" :para-off="paraOff" />
 
       <div class="hud" :class="{ off: !hudOn && !tocOpen && !typesetOpen }">
         <span class="hud__count">{{ currentLabel }} · {{ index + 1 }}/{{ total }}</span>
         <button
           class="hud__key"
           :class="{ on: typesetOpen }"
-          title="排版：字号、行距、左右留白（Esc 收起）"
+          title="排版：字号、行距、左右留白、段距（Esc 收起）"
           @click="toggleTypeset"
         >
           Aa

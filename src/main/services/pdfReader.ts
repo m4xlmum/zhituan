@@ -23,7 +23,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-import { app, protocol, type Session } from 'electron'
+import { app, type Session } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
@@ -63,28 +63,27 @@ const pathsByToken = new Map<string, string>()
 const tokensByPath = new Map<string, string>()
 
 /**
- * 注册协议名。
+ * 这条协议的特权声明。
  *
- * **必须在 app ready 之前调用**（Electron 的规矩：特权只能在那之前声明）。
- * 因此 index.ts 里它挨着 hardenWebContents()，都在 bootstrap 的模块体里。
+ * **这里只交名字，不负责注册**：`protocol.registerSchemesAsPrivileged()` 只认
+ * **最后一次调用**，三条协议各调一次的话前两条当场作废（实测见 index.ts 的
+ * registerReaderSchemes，那几条注释里有读数）。因此三条一起由那里一次交上去，
+ * 这一份只是一个描述——**必须在 app ready 之前**交（Electron 的规矩：特权只能
+ * 在那之前声明），时机由 index.ts 那一次调用守着。
  */
-export function registerPdfScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: PDF_SCHEME,
-      privileges: {
-        // standard：按 `协议://主机/路径` 解析，URL 才有 hostname 可用
-        standard: true,
-        // secure：算安全上下文（pdf.js 与 wasm 都假定自己在安全上下文里）
-        secure: true,
-        // supportFetchAPI：页面用 fetch 取，而不是只能当文档导航过去
-        supportFetchAPI: true,
-        // stream / corsEnabled：大文件按段取、跨来源取都要它
-        stream: true,
-        corsEnabled: true
-      }
-    }
-  ])
+export const PDF_SCHEME_PRIVILEGED: Electron.CustomScheme = {
+  scheme: PDF_SCHEME,
+  privileges: {
+    // standard：按 `协议://主机/路径` 解析，URL 才有 hostname 可用
+    standard: true,
+    // secure：算安全上下文（pdf.js 与 wasm 都假定自己在安全上下文里）
+    secure: true,
+    // supportFetchAPI：页面用 fetch 取，而不是只能当文档导航过去
+    supportFetchAPI: true,
+    // stream / corsEnabled：大文件按段取、跨来源取都要它
+    stream: true,
+    corsEnabled: true
+  }
 }
 
 /**

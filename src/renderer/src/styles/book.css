@@ -229,6 +229,15 @@ button {
   height: 32px;
 }
 
+/*
+ * 段距那一行没有对象时（见 TypesetPanel 的 paraOff）。
+ * 整行连读数一起退成灰的，圆点也换成轨道的颜色——`disabled` 已经让滑块拖不动了，
+ * 这里只是让「拖不动」看得出来。
+ */
+.typeset__row.off {
+  opacity: 0.45;
+}
+
 .typeset__label {
   flex: 0 0 auto;
   width: 2.6em;

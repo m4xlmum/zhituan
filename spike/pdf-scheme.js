@@ -52,7 +52,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, protocol } = require('electron')
 const esbuild = require('esbuild')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -199,9 +199,15 @@ try {
   fatal('装载模块', err)
 }
 
-// 注册特权协议必须在 ready 之前；显示名与主程序一致，userData 才不会另起一处
+/*
+ * 注册特权协议必须在 ready 之前；显示名与主程序一致，userData 才不会另起一处。
+ *
+ * 交的是产品代码那一份声明（pdfReader.ts 的 PDF_SCHEME_PRIVILEGED）。产品里
+ * **三条协议合成一次调用**（只认最后一次，见 index.ts 的注释），这一支只用到
+ * PDF 一条，于是这一次调用本身就是那「最后一次」。
+ */
 app.setName('zhituan')
-mods.pdf.registerPdfScheme()
+protocol.registerSchemesAsPrivileged([mods.pdf.PDF_SCHEME_PRIVILEGED])
 
 // ------------------------------------------------------------------ 读页面
 

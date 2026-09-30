@@ -14,14 +14,18 @@ import {
   DEFAULT_READER_FONT,
   DEFAULT_READER_LINE,
   DEFAULT_READER_MARGIN,
+  DEFAULT_READER_PARA,
   READER_FONT_MAX,
   READER_FONT_MIN,
   READER_LINE_MAX,
   READER_LINE_MIN,
   READER_MARGIN_MAX,
-  READER_MARGIN_MIN
+  READER_MARGIN_MIN,
+  READER_PARA_MAX,
+  READER_PARA_MIN
 } from '@shared/constants'
 import type { Bookmark, HistoryEntry, TabState } from '@shared/types'
+import { isLocalEpub, isLocalText, isLocalTxt } from '@shared/url'
 import { useConfig } from '../composables/useConfig'
 import { useBackgroundAlpha } from '../composables/useBackgroundAlpha'
 
@@ -151,20 +155,20 @@ function zoom(op: 'in' | 'out' | 'reset'): void {
 }
 
 /*
- * 离线阅读的排版三项。
+ * 离线阅读的排版四项。
  *
  * 与上面两条不一样的是：它**不作用在「某一页」上，而是作用在「离线阅读」这件事
- * 上**。写的是 ui 里那三个字段，落款由两边各自去办——本机 TXT 那一页由主进程
- * 把这三项写进它那个 pre（TabManager 的 applyPageStyles / refreshReaderView），
- * 自家 EPUB 那一页自己从同一份配置里读（book/BookApp.vue 的 applyTypeset）。
- * 因此这里不必传 tabId，也不必判有没有当前网页：值与对象都由主进程那一侧
- * 对上号。于是**不必收面板**：用户要连着拖三条，拖完自己点别处收起。
+ * 上**。写的是 ui 里那四个字段，落款由三边各自去办——自家那两页阅读器自己从同一份
+ * 配置里读（book/BookApp.vue 与 txt/TxtApp.vue 的 applyTypeset），Chromium 排出来的
+ * 本机文本由主进程写进它那个 pre（TabManager 的 applyPageStyles / refreshReaderView）。
+ * 因此这里不必传 tabId，也不必判有没有当前网页：值与对象都由落款那一侧对上号。
+ * 于是**不必收面板**：用户要连着拖四条，拖完自己点别处收起。
  *
- * 与书页右下角那枚 Aa 打开的是同一组控件、同一份配置，两处改完的结果一致
- * ——这是「一份配置、两处落点」这条规矩在界面上的样子（右栏第三条滑块与
+ * 与两页阅读器右下角那枚 Aa 打开的是同一组控件、同一份配置，三处改完的结果一致
+ * ——这是「一份配置、多处落点」这条规矩在界面上的样子（右栏第三条滑块与
  * 它同源，见 Rail.vue）。
  */
-function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
+function setTypeset(key: 'font' | 'line' | 'margin' | 'para', event: Event): void {
   const value = Number((event.target as HTMLInputElement).value)
   if (!Number.isFinite(value)) return
   const ui =
@@ -172,9 +176,39 @@ function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
       ? { readerFontSize: value }
       : key === 'line'
         ? { readerLineHeight: value }
-        : { readerMargin: value }
+        : key === 'margin'
+          ? { readerMargin: value }
+          : { readerParagraph: value }
   void window.zhituan.config.patch({ ui })
 }
+
+/** 正在看的那一页。judge 段距有没有对象要用它的地址（见 paraOff） */
+const activeTabUrl = computed(
+  () => tabList.value.find((t) => t.id === activeTabId.value)?.url ?? null
+)
+
+/**
+ * 段距那一行不能用时的一句话（空串 = 能用，也就没有 title）。
+ *
+ * 四行里只有这一行会没对象：另外三项对任何正文都成立，而段距要正文里分得出「段」。
+ * 需要判的只有一种——**Chromium 排出来的本机文本**（`.md`、`.log` 这一类）：那一页
+ * 整篇是一个 `<pre>`，一个标签都不是它自己的，没有段与段之间可言（见
+ * services/pageStyler.ts 的 applyReaderTypeset，那三项写的就是这个 pre）。
+ *
+ * 自家那两页阅读器（本机 TXT 与本机 EPUB）不在这里判：它们的正文有段落结构，
+ * 而「这一章切不切得动」只有那一页自己知道，于是由它们各自在页内那枚 Aa 的面板上
+ * 灰掉（见 reader/TypesetPanel.vue 的 paraOff）。两处判据各管各的落点，合起来才是
+ * 「能用的时候一定能用，不能用的时候一定看得见为什么」。
+ *
+ * 停在网页或起始页上时**不禁**：那时这一组控件谈的仍然是「离线阅读那份配置」，
+ * 三项旧的一样不禁，第四项跟着旧规矩走。
+ */
+const paraOff = computed(() => {
+  const url = activeTabUrl.value
+  return isLocalText(url) && !isLocalEpub(url) && !isLocalTxt(url)
+    ? '这一份文档整篇是一块（Chromium 排出来的纯文本），没有段与段之间，段距对它不生效'
+    : ''
+})
 </script>
 
 <template>
@@ -230,11 +264,11 @@ function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
       </template>
 
       <!--
-        排版。离线阅读的正文那三项（字号 / 行距 / 左右留白）。
-        顶栏那枚 Aa 打开的是它，自家 EPUB 阅读页右下角那枚 Aa 打开的是同一组控件
-        ——后者长在书页里，因为那一页是我们自己画的；本机 TXT 那一页是 Chromium
-        自己渲染的，页面上没有一处能挂控件，所以只好长到顶栏上（见 shared/ipc.ts
-        的 OpenPopoverRequest.kind）。
+        排版。离线阅读的正文那四项（字号 / 行距 / 左右留白 / 段距）。
+        顶栏那枚 Aa 打开的是它，自家那两页阅读器（本机 EPUB 与本机 TXT）右下角
+        也各有一枚同样的 Aa、开着同一组控件——那两枚长在页里，因为那两页是我们
+        自己画的；而 Chromium 自己渲染的那一类（.md、.log）页面上没有一处能挂
+        控件，所以只好长到顶栏上（见 shared/ipc.ts 的 OpenPopoverRequest.kind）。
       -->
       <template v-else-if="kind === 'typeset'">
         <div class="section">正文</div>
@@ -279,11 +313,31 @@ function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
           />
           <span class="tvalue">{{ config?.ui.readerMargin ?? DEFAULT_READER_MARGIN }}%</span>
         </label>
-        <p class="hint">
-          只作用于正在读的这一份本机文本：自家那两页阅读器（本机 TXT 与本机 EPUB，页面上
-          也各有一枚同样的 Aa），以及 Chromium 排出来的本机文本（.md、.log 这一类）。
-          网页不受影响。
-        </p>
+        <!--
+          段距。0（默认）到 2em，相对于这一段自己的字号（理由见 @shared/constants
+          的 READER_PARA_MIN）。paraOff 有值时这一行灰掉，见它那一段。
+        -->
+        <label class="trow" :class="{ off: !!paraOff }" :title="paraOff">
+          <span class="tlabel">段距</span>
+          <input
+            class="trange"
+            type="range"
+            :min="READER_PARA_MIN"
+            :max="READER_PARA_MAX"
+            step="0.05"
+            :disabled="!!paraOff"
+            :value="config?.ui.readerParagraph ?? DEFAULT_READER_PARA"
+            @input="setTypeset('para', $event)"
+          />
+          <span class="tvalue"
+            >{{ (config?.ui.readerParagraph ?? DEFAULT_READER_PARA).toFixed(2) }}em</span
+          >
+        </label>
+        <!--
+          这一句必须写成**一行**：`<p>` 里那些换行会被折成一个空格，而这一句是中文
+          ——「页面上 也各有一枚」那种缝就是这么来的（探针量到的原文里就有）。
+        -->
+        <p class="hint">只作用于正在读的这一份本机文本：自家那两页阅读器（本机 TXT 与本机 EPUB，页面上也各有一枚同样的 Aa），以及 Chromium 排出来的本机文本（.md、.log 这一类）。网页不受影响。</p>
       </template>
 
       <!-- 显示 -->
@@ -430,12 +484,13 @@ function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
 }
 
 /*
- * 排版面板那三行：小标题 + 横条 + 读数。
+ * 排版面板那四行：小标题 + 横条 + 读数。
  *
- * 与自家 EPUB 阅读页里那组（styles/book.css 的 .typeset__row）是同一套材料，
+ * 与自家阅读页里那组（styles/book.css 的 .typeset__row）是同一套材料，
  * 只是换了宽度——那一组的面板是自己画的、宽 300px，这一组在 320px 的弹出面板里。
  * 不共用一个组件：那一边用的是全局样式表、这一边是 scoped，而两边的行高、
  * 内边距都要跟着各自的容器走（书页那份底下还压着正文，要一点点半透明）。
+ * 段距那一行没有对象时灰掉（见 paraOff），两处的写法也一样。
  *
  * range 的轨道与圆点依然得自己画：`appearance: none` 之后浏览器不再给它们样式，
  * 而各平台的默认外观在这一套配色里都不成立。轨道画在 runnable-track 上
@@ -447,6 +502,11 @@ function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
   gap: 10px;
   height: 32px;
   padding: 0 6px;
+}
+
+/* 段距那一行不能用时：整行连读数一起退成灰的，让「拖不动」看得出来 */
+.trow.off {
+  opacity: 0.45;
 }
 
 .tlabel {

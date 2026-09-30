@@ -134,7 +134,8 @@
     ——历史、会话恢复、地址栏、离线阅读那一行读的都是它。**字节不走 `file://`**：
     `zhituan-pdf://doc/<token>`，token ↔ 路径的对应表只在主进程里，路径从不进渲染进程；
     资源走 `zhituan-pdf://asset/<目录>/<文件>`，白名单之外的目录一律 404（Q54）。
-    `registerPdfScheme()` 必须在 app ready **之前**调用，晚了协议就是白注册。
+    **这条协议的特权必须在 app ready 之前声明**，晚了就是白注册；而且这三条协议
+    （PDF / EPUB / TXT）的特权**必须合在一次调用里交上去**，见第 25 条。
 
 18. **`webContents.zoomLevel` 改的就是 `devicePixelRatio`，而且它不发 `resize`。**
     右栏那条缩放落到这一页上不是「画面被拉大」，是 dpr 从 1 变成 1.2、CSS 宽度一点没动
@@ -155,7 +156,7 @@
     渲染的，界面侧没有那座桥（访客页不带 preload），因此值只能由主进程写进去：
     写配置的路不止一条，所以这件事挂在 `ConfigStore.subscribe` 上
     （`TabManager.refreshReaderView()`），与界面那份镜像的广播同一处。
-    它一次刷**两件事**——透明度与排版三项（第 22 条）：对象、时机、判据完全一样，
+    它一次刷**两件事**——透明度与排版四项（第 22 条）：对象、时机、判据完全一样，
     分开两处写等于把同一条判据抄两遍，那两条迟早会漏掉其中一条路。
     **注入方式是 CSSOM 上的一条行内声明**（`documentElement.style.setProperty('opacity',
     v, 'important')`），不是 `wc.insertCSS`：`removeInsertedCSS` 对 **user origin** 注入的
@@ -187,7 +188,7 @@
     够不着——主进程走这条路没有这个限制（`spike/media-pause.js`：收起那一组 Q1–Q10、
     切走那一组 Q11–Q16）。
 
-22. **本机文本的排版三项没有统一落点，一处一份写法：自家那两页从配置广播里读，
+22. **本机文本的排版四项没有统一落点，一处一份写法：自家那两页从配置广播里读，
     交给 Chromium 的那些（`.md`、`.log`）才往那个 `pre` 上写，而且留白只能走 `padding`。**
     字号 / 行距 / 左右留白这一组是**一份配置**，落点却有四种：本机 EPUB 那一页是自家排的
     （书页右下角那枚 Aa 把三个自定义属性写进 `:root`，Shadow DOM 里的正文继承得到）；
@@ -203,12 +204,34 @@
     `pre-wrap` 照旧在少了几十像素的行盒里折行），用百分比让换个窗口宽度读到的仍是同一份
     版心。注入方式与第 20 条同一条路（行内 CSSOM 的 `!important`：撤得掉、最强、不碰 CSP），
     重注入的时机也同一处（`applyPageStyles` 与 `refreshReaderView`）。
+    **1.6.10 起这一组是四项**，第四项是段距（`ui.readerParagraph`：em、0–2、默认 0）。
+    它与前三项最大的不同是**落点可能没有对象**：前三项对任何正文都成立，而段距要正文里
+    分得出「段」。因此它自带一条规矩——**没有对象就禁掉那一行、并写明为什么，不装作能点**：
+    自家那两页（EPUB / TXT）的正文是段落结构，由各自页面上那枚 Aa 按本章能不能切段灰掉
+    （`reader/TypesetPanel.vue` 的 `paraOff`，判据是段块数超没超上限）；而 Chromium 排出来的
+    那些整篇只是一个 `<pre>`，页面上一个标签都不是我们画的，那一行由顶栏那张面板灰掉
+    （`popover/PopoverApp.vue` 的 `paraOff`，按当前标签页的地址判）。两处各管各的落点，
+    合起来才是「能用的时候一定能用，不能用的时候一定看得见为什么」。
+    **取值是加法，不是改版式**：往后一段上加 `padding-top`，单位 em（跟着这一段自己的
+    字号走），默认 0——于是「默认 = 上一版的样子」是一句字面为真的话，老配置一个字段都
+    不用迁移。用 `padding` 而不是 `margin`：**相邻的 margin 会合并（取大的那个，不是
+    相加）**，而书自己写段距最常见的是 `p { margin: 0 0 1em }` 这一类「上外边距留 0」
+    的写法——我们那点加法写在 `margin-top` 上就跟上一段的下外边距去比大小，比它小的
+    时候**一点都不落到版面上**。T4c 拿同一份加法两处各写一遍量过：书里写着
+    `p { margin: 0 0 60px }` 时，`margin-top: 22px` 那一版的间距**纹丝不动**（60 →
+    60），`padding-top: 22px` 那一版才多出一个字号（60 → 82）。
+    EPUB 那一页还多一层：那条规则（`p + p { padding-top: … !important }`）写在自己一张
+    表里，而**值为 0 时整张表 `disabled`**——不这么做，它会把书自己写的
+    `p + p { padding-top }` 一起压平，而那属于书的版式，我们不碰。
     边界仍然只有一条：**网页永远吃不到它**，判据还是 `isLocalFile`（谓词多了一层
     `isLocalPdf` 的反面，见 `@shared/url` 的 `isLocalText`，那是给界面判断那枚键
     此刻管不管得着用的）。
     **判据：`spike/txt-typeset.js`**（1.6.5 建的那一版量的是往 `pre` 上写；1.6.9 起
     `.txt` 不再走那一支，它量的是自家那一页——而那个 `pre` 那一支仍然由
-    `.md` / `.log` 走，代码一个字没删）。
+    `.md` / `.log` 走，代码一个字没删；1.6.10 起它量四行）与 `spike/book-tab.js` 的 T4b
+    （书那一侧：值为 0 时那张表停不停用、拖上去当场落不落进 `p + p`）、T4c
+    （同一份加法写在 `margin-top` 与 `padding-top` 上各量一遍，`padding` 那个选择
+    就落在那两组数上）。
 23. **安装器收旧进程时不许带 `taskkill /T`——`/T` 连子进程树一起收，而安装程序自己就在那棵树里。**
     「更新并重启」是应用起安装程序：`spawn(安装包, ['/S','--updated','--force-run'],
     { detached: true, stdio: 'ignore' })`。`detached` 在 Windows 上只等于 `DETACHED_PROCESS`
@@ -248,6 +271,22 @@
     代价是后台那一屏的位置不记——那本来也不是用户的「上次」。这一条同时管住 EPUB 与 TXT
     两页，改一次两处都对。
 
+25. **三条阅读协议的特权只能有一次调用——`registerSchemesAsPrivileged()` 只认最后一次。**
+    「自家阅读页怎么拿到一份本机文件的字节」这件事有三条协议（`zhituan-pdf` /
+    `zhituan-book` / `zhituan-txt`），权限一字不差。它们的名字必须在 app ready **之前**
+    声明，而声明这件事**只能做一次**：分开调三次，前两次当场作废，量出来的样子是那两条
+    协议的 `fetch` 全抛 `TypeError: Failed to fetch`，只有最后交上去的那条取得到
+    （`spike/reader-schemes.js` 的两面：一次交 → 三条都 200；分开交 → 前两条抛、最后
+    一条 200）。**这个坑 1.6.9 真踩了**：TXT 那条协议加在末尾之后，PDF 与 EPUB 一起哑了
+    ——本机 EPUB 点开是一句「打不开这本书：Failed to fetch」（`spike/book-tab.js` 的 T1），
+    PDF 那一页的字节与它那四样资源（cMap / 标准字体 / wasm）也全取不到
+    （`spike/pdf-tab.js` 的 P1/P2/P3）。而主进程那一侧看起来一切正常：handler 挂上了、
+    `isProtocolHandled` 是 true、warn 一条都不出——因为**请求根本没走到 handler**（Q86）。
+    因此这三份声明各自留在各自的模块里（`XXX_SCHEME_PRIVILEGED`），由 `index.ts`
+    **合在一次调用里交上去**；再加第四条协议时**加进那一次调用**，不许另起一句
+    ——`spike/reader-schemes.js` 的 S1 就是扫这件事的：`src/main` 底下
+    `protocol.registerSchemesAsPrivileged(` 的**代码**只许出现一处，且三份名字都要在里面。
+
 > 早期版本用 `setShape` 裁剪窗口的命中区域来实现「隐藏区域点击穿透」。
 > 改为收起成球之后这套机制已整体移除：窗口真的缩小了，就不需要再靠裁剪
 > 去欺骗命中测试，`setShape` 也不再有存在的理由。
@@ -270,10 +309,10 @@ src/renderer/  chrome 界面 / 弹出面板 / 系统设置 / PDF 阅读页 / EPU
 | `src/main/services/windowLeaveWatcher.ts` | 光标轮询、迟滞、挂起门控 |
 | `src/main/services/geometry.ts` | 版面矩形计算，坐标判断的唯一来源 |
 | `src/main/services/updateService.ts` | 更新那一路：查 `latest.yml` → 比版本 → 下载并校验 sha512 → 起安装程序。**不用 electron-updater** 的三条理由写在文件头 |
-| `src/main/services/pdfReader.ts` | 本机 PDF 那条路：`zhituan-pdf://` 的两张面（字节与资源）、token ↔ 路径的对应表、阅读页的地址 |
+| `src/main/services/pdfReader.ts` | 本机 PDF 那条路：`zhituan-pdf://` 的两张面（字节与资源）、token ↔ 路径的对应表、阅读页的地址。特权那一份声明（`PDF_SCHEME_PRIVILEGED`）也住在这里，但**注册不在这里**——三条协议合在一次调用里交，见第 25 条 |
 | `src/main/services/txtReader.ts` | 本机 TXT 那条路：`zhituan-txt://<token>/text` 把字节交给自家那一页（**故意不带 charset**——认编码是页面那一半的事，用的是同一个 `TextDecoder`），以及续读那一半：开这一页时从 `reading.of(本机路径)` 取回上一次的章与章内比例，编进地址的 `at` / `ratio` |
 | `src/shared/txt.ts` | 切章那一套的**全部**（纯函数，主进程与渲染进程共用同一份）：五档编码的 `decodeText`、`splitChapters` / `chapterText` / `isChapterLine`、位置记号的 `formatMark` / `parseMark` / `locateChapter`。它是「章」这件事唯一的定义处 |
-| `src/main/services/pageStyler.ts` | 注入访客页面的四样东西：透明底、藏滚动条、离线阅读透明度在 **Chromium 自己排的本机文本**那一半上的 `opacity`、以及排版三项（字号 / 行距 / 左右留白，写在那个 `pre` 上）。**后两样都只给本机文件**（见第 20、22 条；PDF 那一半由页面自己落在画布底色上，EPUB 与 TXT 那两页自己从配置里读） |
+| `src/main/services/pageStyler.ts` | 注入访客页面的四样东西：透明底、藏滚动条、离线阅读透明度在 **Chromium 自己排的本机文本**那一半上的 `opacity`、以及排版四项里对那个 `pre` 成立的三项（字号 / 行距 / 左右留白；**段距在 `pre` 上没有对象**，那一行因此是灰的，见第 22 条）。**后两样都只给本机文件**（见第 20、22 条；PDF 那一半由页面自己落在画布底色上，EPUB 与 TXT 那两页自己从配置里读） |
 | `src/renderer/src/txt/TxtApp.vue` | 本机 TXT 的阅读页：认编码、切章、**一次只把一章放进 DOM**（`chapterText`），滚动到章末再滚一下 / 方向键 / 目录里点一条三条通道翻章，位置按 600ms 去抖上报（第 24 条那道闸在主进程那一头） |
 | `src/renderer/src/composables/usePopover.ts` | 「从按下的那一格上开一张弹出面板」的唯一一处：量锚点、报给主进程摆位（顶栏那枚 Aa 与右栏那四格共用） |
 | `src/renderer/src/home/useRows.ts` | 起始页的行模型与交互：三套主题共用，世界组件只负责画 |

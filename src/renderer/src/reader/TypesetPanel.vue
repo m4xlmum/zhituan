@@ -1,24 +1,36 @@
 <script setup lang="ts">
 /**
- * 离线阅读的排版三项（字号 / 行距 / 左右留白）——两个自家阅读页共用的那块面板。
+ * 离线阅读的排版四项（字号 / 行距 / 左右留白 / 段距）——两个自家阅读页共用的那块面板。
  *
  * ## 为什么另起一个组件
  *
  * 本机 EPUB 与本机 TXT 各有自己的一页，而这两页右下角那枚 Aa 打开的是**同一块面板**：
- * 同样三条横向滑块、同样写 `ui.readerFontSize / readerLineHeight / readerMargin`
- * 这三个字段（见 @shared/constants 那六个上下限）。原先它长在 BookApp 里，TXT 那一页
- * 一来就得抄第二份——两份滑块的上下限、步长、读数格式只要有一处不同，
+ * 同样四条横向滑块、同样写 `ui.readerFontSize / readerLineHeight / readerMargin /
+ * readerParagraph` 这四个字段（见 @shared/constants 那四组上下限）。原先它长在 BookApp
+ * 里，TXT 那一页一来就得抄第二份——两份滑块的上下限、步长、读数格式只要有一处不同，
  * 两页就再也说不出「改的是同一件事」。
  *
  * ## 自己读配置，不接 props
  *
  * config 那一份镜像由 `useConfig` 给（`window.zhituan.config` + 配置广播），本组件
- * 自己取一份。父页面因此不必把三个数传进来、也不必替它把改动转出去：面板写的是配置，
+ * 自己取一份。父页面因此不必把四个数传进来、也不必替它把改动转出去：面板写的是配置，
  * 而**两个页面的正文都在听那条广播**（见 BookApp 与 TxtApp 的 applyTypeset），
  * 于是「拖一下、字当场变」不需要父页面牵线。
  *
  * 代价是同一页里有两次 `config.get`——一次在父页面、一次在这里。两毫秒的事，
  * 换的是这一块面板可以原样放进任何一页。
+ *
+ * ## 段距那一行没有对象时是灰的
+ *
+ * 另外三项对**任何**正文都有对象，段距没有——它要正文里分得出「段」。于是父页面
+ * 可以传一句话进来（`paraOff`），传了就把那一行禁掉，并把那句话挂成它的 title。
+ * 两个父页面各自知道自己那一份正文的形态：
+ *
+ *   · 本机 EPUB：这一章里有没有 `p + p`（用 `<br>` 或 `<div>` 排段落的书没有）；
+ *   · 本机 TXT：这一章切出来有没有超过分段上限（见 TxtApp 的 PARA_MAX_BLOCKS）。
+ *
+ * 不传就是能用。这是仓库里那条「没有对象就禁掉，不装作能点」（见 Rail.vue 那三格）
+ * 在这一行上的样子；顶栏那枚 Aa 开的另一份面板（popover/PopoverApp.vue）照同一条走。
  *
  * ## 三类东西刻意不在这里
  *
@@ -35,29 +47,40 @@ import {
   DEFAULT_READER_FONT,
   DEFAULT_READER_LINE,
   DEFAULT_READER_MARGIN,
+  DEFAULT_READER_PARA,
   READER_FONT_MAX,
   READER_FONT_MIN,
   READER_LINE_MAX,
   READER_LINE_MIN,
   READER_MARGIN_MAX,
-  READER_MARGIN_MIN
+  READER_MARGIN_MIN,
+  READER_PARA_MAX,
+  READER_PARA_MIN
 } from '@shared/constants'
+import type { UiConfig } from '@shared/types'
 import { useConfig } from '../composables/useConfig'
+
+/**
+ * 段距这一行不能用时的一句话（空的 = 能用）。它同时是那一行的 title：
+ * 灰掉一个控件而不说为什么，用户只会以为它坏了。
+ */
+defineProps<{ paraOff?: string }>()
 
 const { config, patch } = useConfig()
 
 /** 面板上拖一下。写的是配置，回来的广播会让正文重排 */
-function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
+function setTypeset(key: 'font' | 'line' | 'margin' | 'para', event: Event): void {
   const value = Number((event.target as HTMLInputElement).value)
   if (!Number.isFinite(value)) return
-  void patch({
-    ui:
-      key === 'font'
-        ? { readerFontSize: value }
-        : key === 'line'
-          ? { readerLineHeight: value }
-          : { readerMargin: value }
-  })
+  const ui: Partial<UiConfig> =
+    key === 'font'
+      ? { readerFontSize: value }
+      : key === 'line'
+        ? { readerLineHeight: value }
+        : key === 'margin'
+          ? { readerMargin: value }
+          : { readerParagraph: value }
+  void patch({ ui })
 }
 </script>
 
@@ -103,6 +126,26 @@ function setTypeset(key: 'font' | 'line' | 'margin', event: Event): void {
         @input="setTypeset('margin', $event)"
       />
       <span class="typeset__value">{{ config?.ui.readerMargin ?? DEFAULT_READER_MARGIN }}%</span>
+    </label>
+    <!--
+      段距。0（默认）到 2em，单位是相对于这一段自己的字号——理由见 @shared/constants
+      的 READER_PARA_MIN。paraOff 有值时整行灰掉，见文件头最后一段。
+    -->
+    <label class="typeset__row" :class="{ off: !!paraOff }" :title="paraOff">
+      <span class="typeset__label">段距</span>
+      <input
+        class="typeset__range"
+        type="range"
+        :min="READER_PARA_MIN"
+        :max="READER_PARA_MAX"
+        step="0.05"
+        :disabled="!!paraOff"
+        :value="config?.ui.readerParagraph ?? DEFAULT_READER_PARA"
+        @input="setTypeset('para', $event)"
+      />
+      <span class="typeset__value"
+        >{{ (config?.ui.readerParagraph ?? DEFAULT_READER_PARA).toFixed(2) }}em</span
+      >
     </label>
   </aside>
 </template>

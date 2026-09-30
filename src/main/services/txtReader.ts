@@ -36,7 +36,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-import { protocol, type Session } from 'electron'
+import type { Session } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -66,24 +66,23 @@ const pathByToken = new Map<string, string>()
 const tokenByPath = new Map<string, string>()
 
 /**
- * 注册协议名。**必须在 app ready 之前调用**（特权只能在那之前声明），
- * 因此 index.ts 里它挨着 registerBookScheme()。
+ * 这条协议的特权声明。
+ *
+ * **这里只交名字，不负责注册**：`protocol.registerSchemesAsPrivileged()` 只认
+ * **最后一次调用**——这一条正是 1.6.9 里最后一个加上去的，于是它好用、前两条
+ * 哑了（详见 index.ts 的 registerReaderSchemes）。
  */
-export function registerTxtScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: TXT_SCHEME,
-      privileges: {
-        // standard：按 `协议://主机/路径` 解析，主机名才能当 token 用
-        standard: true,
-        secure: true,
-        supportFetchAPI: true,
-        stream: true,
-        // 页面的来源是 `file:`（不透明来源），要它取得到这条协议就得开 CORS
-        corsEnabled: true
-      }
-    }
-  ])
+export const TXT_SCHEME_PRIVILEGED: Electron.CustomScheme = {
+  scheme: TXT_SCHEME,
+  privileges: {
+    // standard：按 `协议://主机/路径` 解析，主机名才能当 token 用
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    stream: true,
+    // 页面的来源是 `file:`（不透明来源），要它取得到这条协议就得开 CORS
+    corsEnabled: true
+  }
 }
 
 /**

@@ -308,6 +308,64 @@ export function chapterText(text: string, chapter: TxtChapter): string {
   return text.slice(chapter.start, chapter.end)
 }
 
+/**
+ * 一「块」正文：一段字，或者一片空行。
+ *
+ * 两块的差别只在**要不要在它前面垫一层段距**（见 UiConfig.readerParagraph）——
+ * 空行那一片不能再垫：它自己就是原文里的间距，垫出来的会是双份。
+ */
+export interface TxtBlock {
+  /** `p` = 一段正文，`gap` = 一片空行（连着几个空行就是一块） */
+  kind: 'p' | 'gap'
+  /** 这一块的字，**原样**。所有块接起来与传进来的那份文本逐字相同 */
+  text: string
+}
+
+/**
+ * 一段正文 → 一块块「段」与「空行」。
+ *
+ * 这一页的正文是一个纯文本，段落只是原文里的空行；要能一段一段地垫东西
+ * （段距），就得先把它分成元素。切法只有两条：
+ *
+ *   · **有空行**（`trim()` 之后为空的行）：连着几个空行算**一块**间距，两片空行
+ *     之间那几行算**一段**。这是中文小说最常见的样子——用户那本 6.75MB 的
+ *     《带着战略仓库回大唐》就是「一段一行 + 一个空行」：184412 行整篇切出来
+ *     124857 块（段 62429 + 空行块 62428）（Q85）。
+ *   · **一个空行都没有**：那这份文本的段落就是**行**（每行一段）。一份日志、一份
+ *     行式的清单本来就是这样，而「没有空行」这件事本身就是它给出的判据——同一份
+ *     文件里既有空行分隔、又有逐行分段的写法不存在，所以不必再猜。
+ *
+ * **拼回去必须逐字相同**，这是这一条最要紧的性质（正文是可选中、可复制的：
+ * 挑选一段拷出来不该少一个换行）。做法是让每一块**带上收尾它的那个换行**：
+ * 「A\n\nB」切成 `A\n` / `\n` / `B` 三块，接起来还是「A\n\nB」；而三块各排
+ * 1 / 1 / 1 个行盒，与原先那一整片 `pre-wrap` 排出来的三行**逐像素相同**
+ * （换行是它自己那一行的收尾，不是下一行的开头——差别就在这儿）。
+ *
+ * 也正因为如此，**值为 0 时阅读页根本不必调用它**：段落之间不加料时，原先那一个
+ * 文本节点排出来的就是这个结果（见 TxtApp 的 blocks）。
+ */
+export function splitParagraphs(text: string): TxtBlock[] {
+  const blocks: TxtBlock[] = []
+  if (!text) return blocks
+
+  const lines = text.split('\n')
+  const 有空行 = lines.some((l) => l.trim() === '')
+
+  let i = 0
+  while (i < lines.length) {
+    const blank = 有空行 && lines[i].trim() === ''
+    let j = i + 1
+    // 空行那一片要连着收：连着几个空行是一块间距，不是几块
+    if (有空行) while (j < lines.length && (lines[j].trim() === '') === blank) j++
+    blocks.push({
+      kind: blank ? 'gap' : 'p',
+      text: lines.slice(i, j).join('\n') + (j < lines.length ? '\n' : '')
+    })
+    i = j
+  }
+  return blocks
+}
+
 /** 位置记号：`<章序>:<章名>`。见文件头 */
 export function formatMark(index: number, title: string): string {
   return `${index}:${title}`

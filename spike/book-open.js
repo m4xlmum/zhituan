@@ -14,12 +14,12 @@
  * 真 preload 要校验来源，探针这一页是 file: 加载的，走不通。
  *
  * 跑法（先 python spike/make-test-epub.py，两个环境坑见 spike/env-pitfalls.js）：
- *   env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
+ *   /usr/bin/env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS \
  *     npx electron --no-sandbox --in-process-gpu spike/book-open.js
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-const { app, BrowserWindow, session } = require('electron')
+const { app, BrowserWindow, protocol, session } = require('electron')
 const fs = require('node:fs')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
@@ -39,7 +39,7 @@ const PARTITION = 'persist:zhituan'
 process.env.ELECTRON_RENDERER_URL = pathToFileURL(RENDERER).href
 global.__electron = require('electron')
 
-const { bookReaderUrl, registerBookProtocol, registerBookScheme } = require('./out/bookReader.cjs')
+const { bookReaderUrl, registerBookProtocol, BOOK_SCHEME_PRIVILEGED } = require('./out/bookReader.cjs')
 
 const 看门狗 = setTimeout(() => {
   console.error('!! 看门狗：120 秒还没跑完，强退')
@@ -55,8 +55,13 @@ process.on('unhandledRejection', (e) => {
   app.exit(1)
 })
 
-/* 特权必须在 app ready 之前声明（这里调用的就是产品代码那一个函数） */
-registerBookScheme()
+/*
+ * 特权必须在 app ready 之前声明。交的是产品代码那一份声明
+ * （bookReader.ts 的 BOOK_SCHEME_PRIVILEGED）——产品里三条协议**合成一次调用**
+ * （`registerSchemesAsPrivileged` 只认最后一次，见 index.ts），这一支只用到
+ * 书这一条，于是这一次调用本身就是那「最后一次」。
+ */
+protocol.registerSchemesAsPrivileged([BOOK_SCHEME_PRIVILEGED])
 
 const show = (label, obj) => console.log(`${label} ${JSON.stringify(obj)}`)
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))

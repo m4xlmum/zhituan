@@ -1,21 +1,36 @@
 /**
- * 探针：离线阅读的排版三项，端到端走一遍。
+ * 探针：离线阅读的排版**四项**（字号 / 行距 / 左右留白 / 段距），端到端走一遍。
  *
  * 问的是 1.6.6 那一版就立起来的那件事，只是**这一版换了一页**：本机 TXT 不再交给
  * Chromium 的文本查看器渲染（那一页整篇是一个 `pre`，见 spike/txt-page.js 量的形状），
  * 而是自家那一页（`txt.html?doc=<token>`）。于是这一支量的是 `.txt__body`，不是 `pre`。
+ * 段距（1.6.10 加的那一项）落的就是这一页：正文是纯文本，要一段一段垫东西就得先把
+ * 它切成元素（切法在 spike/txt-split.js 里单测过，这里量的是**切完之后有没有落上去**）。
  *
- * 五件事，每件都得有读数：
+ * 量的是**翻开之后往后翻到的、真有正文的那一章**，不是落地那一章：用户那本小说的第 1 章
+ * 是书名页（11 个字、一个段落），而段距要的是「段与段之间」——第 1 章上量不出它来。
+ * 翻章走页面自己的方向键通道，与用户按一下是同一件事（见 main() 里那一段）。
+ *
+ * 「面板摆在锚点下方」这一条**不判**，只记读数：主窗口被挪出屏幕之后 place() 会把两个
+ * 方向都夹进工作区，夹出来的位置一样，这一条在无头跑法里量不了（见 main() 里那一段）。
+ *
+ * 六件事，每件都得有读数：
  *
  *   1. **默认那一组有没有落上去**。量的是正文**算出来的** font-size / line-height /
  *      padding（不是我们写进去的那串字——「写进去了、没生效」正是这一条最可能出的
- *      坏法）。同时量一遍外壳：这一页是自家那一页，场上**没有**哪一屏加载的是那个
- *      `.txt` 本身（判错了 kind，Chromium 会把它当下载变成一片空白，见 book-tab 的 T1）。
+ *      坏法）。段距的默认值 0 另有一条判据：**这时正文里一个 .txt__p 都不该有**，
+ *      正文还是那一个文本节点（「默认值 = 这一版之前的样子」在这条路上是连 DOM 都没动）。
+ *      同时量一遍外壳：这一页是自家那一页，场上**没有**哪一屏加载的是那个 `.txt` 本身
+ *      （判错了 kind，Chromium 会把它当下载变成一片空白，见 book-tab 的 T1）。
  *   2. **顶栏那枚 Aa 键在不在、按下去面板出不出来**。它在读本机文本时可用，在网页上禁用。
- *   3. **面板里拖一下，正文当场变**，且三个方向各自独立（改留白不动字号）。
+ *      面板里是**四行**，读数是配置里那四个数（顺带判一次分类：读本机 TXT 时，
+ *      段距那一行**不该**是灰的——灰了就是 paraOff 把自家这一页也当成 Chromium 那类了）。
+ *   3. **面板里拖一下，正文当场变**，且四个方向各自独立（改留白不动字号……）。
+ *      段距这一条量的是第二段算出来的 padding-top：它该等于字号 × 那一档的值。
  *   4. **两枚浮层键是干净的**（`.hud__key` 没有 Chromium 给按钮的原生灰底与立体边框）。
  *      这一条是跟着新页面一起补的：读者页不加载 base.css，而那两条规则原先是 UA 说了算。
  *   5. **网页上那枚键该是禁用的**。
+ *   6. **面板自己没被裁**（它是固定高度的子窗口，四行加一句话得整个放得下）。
  *
  * 跑法：npx electron --no-sandbox spike/txt-typeset.js
  *      npx electron --no-sandbox spike/txt-typeset.js --txt <路径>
@@ -38,7 +53,7 @@ const OFF_Y = -4000
 
 const TEMP = makeTempUserData('zhituan-txttype-')
 
-/** 抄一份用户的数据到临时目录；窗口挪出屏幕之外。排版三项**写成默认值**，好对账 */
+/** 抄一份用户的数据到临时目录；窗口挪出屏幕之外。排版四项**写成默认值**，好对账 */
 function 抄一份(realDir) {
   for (const f of ['config.json', 'history.json', 'bookmarks.json', 'ball-icon.json']) {
     if (!realDir) break
@@ -55,6 +70,7 @@ function 抄一份(realDir) {
       data.ui.readerFontSize = 17
       data.ui.readerLineHeight = 1.85
       data.ui.readerMargin = 6
+      data.ui.readerParagraph = 0
       fs.writeFileSync(path.join(TEMP, f), JSON.stringify(data, null, 2), 'utf8')
     } catch {
       // 没有这一份就算了
@@ -97,12 +113,16 @@ const r2 = (n) => Math.round(n * 100) / 100
 /**
  * 量正文那一层。
  *
- * 量的是**算出来的值**（`getComputedStyle`），不是写在行内的那串字：排版三项走的是
- * `--zhituan-reader-*` 这三个自定义属性，而「变量写没写进去 / 写进去了有没有人用」
+ * 量的是**算出来的值**（`getComputedStyle`），不是写在行内的那串字：排版四项走的是
+ * `--zhituan-reader-*` 那四个自定义属性，而「变量写没写进去 / 写进去了有没有人用」
  * 是两种坏法，只有算出来才算数。
  *
+ * 段距那三样（`段块数` / `空行块数` / `第二段的上内边距`）就是为此加的：段距落在
+ * `.txt__p ~ .txt__p` 的 padding-top 上，而**第一段不该有**（它前面不是「段之间」）、
+ * 空行那一片也不该有（见 styles/txt.css）。
+ *
  * 顺带量三样：读数那一句（章名 + 第几章/共几章）、那一行章名、以及浮层上那枚键的
- * 底色与边框——最后这两个是第 4 条判据要看的东西。
+ * 底色与边框——最后这两个是判据四要看的东西。
  */
 const 量正文 = (wc) =>
   wc.executeJavaScript(`(() => {
@@ -112,6 +132,8 @@ const 量正文 = (wc) =>
     const r = b.getBoundingClientRect()
     const 键 = document.querySelector('.hud__key')
     const 键样式 = 键 ? getComputedStyle(键) : null
+    const 段 = [...b.querySelectorAll('.txt__p')]
+    const 空行 = [...b.querySelectorAll('.txt__gap')]
     return {
       有正文: true,
       算出来的字号: s.fontSize,
@@ -122,6 +144,13 @@ const 量正文 = (wc) =>
       盒宽: Math.round(r.width),
       文档高: document.documentElement.scrollHeight,
       正文长: b.textContent.length,
+      // 这一章排不排得出「段与段」：一段也要有两行才谈得上（判据一的那条前置）
+      正文里的行数: b.textContent.split('\\n').length - 1,
+      // 分段排的那条路：段距大于 0 时正文是一个个 .txt__p，等于 0 时是那一个文本节点
+      段块数: 段.length,
+      空行块数: 空行.length,
+      第一块的上内边距: 段.length ? getComputedStyle(段[0]).paddingTop : null,
+      第二块的上内边距: 段.length > 1 ? getComputedStyle(段[1]).paddingTop : null,
       章名: document.querySelector('.txt__head')?.textContent?.trim() ?? null,
       读数: document.querySelector('.hud__count')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null,
       键底色: 键样式 ? 键样式.backgroundColor : null,
@@ -209,7 +238,33 @@ async function main() {
   }
   await delay(600)
 
+  /*
+   * 往后翻到**真有正文**的那一章再量。
+   *
+   * 用户那本小说的第 1 章是书名页（`《带着战略仓库回大唐》`，正文 11 个字、一个段落），
+   * 而段距量的是 `p + p`——一章里只有一个 `<p>` 时那一行无从成立。第一跑就是这么红的：
+   * 段块数 0 → 1，`第二块的上内边距` 根本没有，判据三只差这一条。
+   *
+   * 翻章走页面自己的方向键通道（TxtApp 的 onKey），与用户按一下是同一件事。
+   * 判据取的是**这一章的长度**而不是「翻几次」：换一份素材（`--txt` 指定一份日志）
+   * 时，章序里哪一章有正文并不一样。
+   */
+  let 这一章字数 = 0
+  for (let i = 0; i < 15; i++) {
+    这一章字数 = await 读的那一屏.webContents.executeJavaScript(
+      `(() => { const b = document.querySelector('.txt__body'); return b ? b.textContent.length : 0 })()`
+    )
+    if (这一章字数 >= 800) break
+    await 读的那一屏.webContents.executeJavaScript(
+      `window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }))`
+    )
+    await delay(250)
+  }
+  if (这一章字数 < 800) throw new Error('翻了十几章都没翻到有正文的一章，这一份素材量不了段距')
+  await delay(400)
+
   console.log(`\n================ 一、接线与默认那组（${path.basename(书)}）================`)
+  console.log(`量的是这一章（${这一章字数} 字）：翻到有正文的一章才量得到段距`)
   报告.地址 = 读的那一屏.webContents.getURL()
   报告.掉到文件本身上了吗 = Boolean(
     win.contentView.children.find((v) => v.webContents.getURL() === 地址)
@@ -218,7 +273,7 @@ async function main() {
   console.log(`地址      ${报告.地址.slice(0, 110)}`)
   console.log(`正文      ${JSON.stringify(报告.注入前, null, 0)}`)
 
-  // 期望：字号 17px、行距 1.85×17=31.45px、左右内边距各 6%
+  // 期望：字号 17px、行距 1.85×17=31.45px、左右内边距各 6%、段距 0（= 一个 .txt__p 都没有）
   const 盒宽 = 报告.注入前.盒宽 ?? 0
   const 期望左 = r2(盒宽 * 0.06)
   报告.判据一 = {
@@ -227,6 +282,9 @@ async function main() {
     字号对: 报告.注入前.算出来的字号 === '17px',
     行距对: Math.abs(parseFloat(报告.注入前.算出来的行距) - 31.45) < 0.6,
     留白对: Math.abs(parseFloat(报告.注入前.算出来的左内边距) - 期望左) < 2,
+    // 这一条是判据三的前置：量到的是**有正文的那一章**（第 1 章是书名页，见上面那一段）
+    这一章有不止一行: 报告.注入前.正文里的行数 >= 3,
+    段距0时不切段: 报告.注入前.段块数 === 0 && 报告.注入前.空行块数 === 0,
     章名排出来了: typeof 报告.注入前.章名 === 'string' && 报告.注入前.章名.length > 0,
     读数写着第几章共几章: /·\s*\d+\/\d+$/.test(报告.注入前.读数 ?? '')
   }
@@ -257,6 +315,17 @@ async function main() {
     }
   }
   if (!pop) throw new Error('点了 Aa 之后没等到排版面板')
+  /*
+   * 把它挪出屏幕再量。
+   *
+   * `place()` 会把面板夹回工作区（摆到屏幕外就等于用户看不见它），因此只把主窗口
+   * 挪到 -4000 是不够的——面板会落到主显示器左上角。挪走之后布局照常算（窗口是
+   * 「可见但不在屏幕上」，不是隐藏的），量的那几个数一个都不受影响。
+   * 改开发期弹窗扰民的那条规矩：见 spike/live-app.js 的文件头。
+   */
+  const 面板尺寸 = pop.getBounds()
+  pop.setBounds({ x: OFF_X, y: OFF_Y, width: 面板尺寸.width, height: 面板尺寸.height })
+  await delay(400)
 
   报告.面板 = {
     地址: pop.webContents.getURL(),
@@ -264,11 +333,13 @@ async function main() {
     标题: await pop.webContents.executeJavaScript(
       `document.querySelector('.title')?.textContent?.trim() ?? '(没有标题)'`
     ),
-    三行: await pop.webContents.executeJavaScript(
+    四行: await pop.webContents.executeJavaScript(
       `[...document.querySelectorAll('.trow')].map((e) => ({
         标签: e.querySelector('.tlabel')?.textContent?.trim(),
         读数: e.querySelector('.tvalue')?.textContent?.trim(),
-        值: e.querySelector('.trange')?.value
+        值: e.querySelector('.trange')?.value,
+        禁用: e.querySelector('.trange')?.disabled,
+        灰的: e.classList.contains('off')
       }))`
     ),
     提示: await pop.webContents.executeJavaScript(
@@ -277,14 +348,30 @@ async function main() {
   }
   console.log(`面板      ${JSON.stringify(报告.面板, null, 0)}`)
 
-  // 锚点在顶栏 → 面板该摆在锚点**下方**
+  /*
+   * 「面板摆在锚点下方」这一条**量不了**，只记读数。
+   *
+   * 锚点在顶栏，而 place() 的最后一步是把面板夹进工作区（摆到屏幕外等于用户看不见
+   * 它）。主窗口被挪到 -4000 之后，锚点的**屏幕**坐标也就是负的，两个方向各夹一次，
+   * 夹出来的 y 一模一样——这一条曾经「通过」过，但那是因为夹完之后的差值恰好是个
+   * 大正数，不是因为它真摆对了。要量它就得让主窗口真的在屏幕上（或零不透明度地
+   * 假装在），而那正是开发期不该做的事（见 spike/live-app.js 的文件头）。
+   */
   const 锚 = 报告.键_读TXT时.矩形
-  const 面板顶 = 报告.面板.矩形.y - win.getBounds().y
+  报告.摆位 = {
+    说明: '窗口移出屏幕后量不了：place() 会把两个方向都夹进工作区，夹出来的位置一样',
+    锚点: 锚,
+    面板: 报告.面板.矩形,
+    主窗口: win.getBounds()
+  }
+  const 段距那一行 = 报告.面板.四行[3] ?? {}
   报告.判据二 = {
     面板出得来: true,
-    摆在锚点下方: 面板顶 >= 锚.y + 锚.h,
-    三行齐: 报告.面板.三行.length === 3,
-    读数与配置一致: 报告.面板.三行.map((r) => r.值).join(',') === '17,1.85,6'
+    四行齐: 报告.面板.四行.length === 4,
+    读数与配置一致: 报告.面板.四行.map((r) => r.值).join(',') === '17,1.85,6,0',
+    // 读的是自家 TXT —— 段距在这一页有对象，那一行不该灰（灰了就是把自家这一页
+    // 当成 Chromium 排的那一类了，见 PopoverApp 的 paraOff）
+    段距那一行不禁用: 段距那一行.标签 === '段距' && 段距那一行.禁用 === false && 段距那一行.灰的 === false
   }
   console.log(`判据二    ${JSON.stringify(报告.判据二)}`)
 
@@ -308,18 +395,39 @@ async function main() {
   console.log(`拖行距到 2.4 ${JSON.stringify(报告.拖行距)}`)
   console.log(`正文          ${JSON.stringify(报告.行距24后)}`)
 
+  /*
+   * 段距拖到最后，因为它是唯一会**换掉正文 DOM**的一项（0 → 1 让正文从
+   * 「一个文本节点」变成「一段一个 .txt__p」），前三项量的是同一个正文。
+   * 此刻字号是 26px，于是 1em 的段距算出来该是 26px。
+   */
+  报告.拖段距 = await 在面板里拖(pop, 3, 1)
+  await delay(900)
+  报告.段距1后 = await 量正文(读的那一屏.webContents)
+  console.log(`拖段距到 1   ${JSON.stringify(报告.拖段距)}`)
+  console.log(`正文          ${JSON.stringify(报告.段距1后)}`)
+
   报告.判据三 = {
     字号当场变: 报告.字号26后.算出来的字号 === '26px',
     行距当场变: Math.abs(parseFloat(报告.行距24后.算出来的行距) - 62.4) < 1,
     留白当场变: parseFloat(报告.留白0后.算出来的左内边距) === 0,
-    // 三条互不串门：改留白那一次，字号与行距都还该是「字号 26px 那一组」的值
-    // （行距是无单位的 1.85，所以它算出来是 26 × 1.85 = 48.1）
-    留白没串字号: 报告.留白0后.算出来的字号 === '26px',
-    留白没串行距: Math.abs(parseFloat(报告.留白0后.算出来的行距) - 48.1) < 0.6
+    段距当场变:
+      报告.段距1后.段块数 > 1 &&
+      Math.abs(parseFloat(报告.段距1后.第二块的上内边距) - 26) < 0.6 &&
+      报告.段距1后.第一块的上内边距 === '0px',
+    // 四条互不串门：改段距那一次，前三项都还该是「字号 26px 那一组」的值
+    段距没串字号: 报告.段距1后.算出来的字号 === '26px',
+    段距没串行距: Math.abs(parseFloat(报告.段距1后.算出来的行距) - 62.4) < 1,
+    段距没串留白: parseFloat(报告.段距1后.算出来的左内边距) === 0,
+    /*
+     * 切段不许动到一个字。量的是长度而不是内容：这一页的正文是几万字，
+     * 而切段只是把它挪进几十个盒子里。逐字的往返在 spike/txt-split.js 里
+     * 单测过（那一条才是「少一个换行」的判据），这里量的是**真到了屏幕上**的那一份。
+     */
+    段距没改正文长: 报告.段距1后.正文长 === 报告.注入前.正文长
   }
   console.log(`判据三    ${JSON.stringify(报告.判据三)}`)
 
-  // 面板自己有没有被裁：那三行加一句话必须整个放得下（面板是固定高度的子窗口）
+  // 面板自己有没有被裁：那四行加一句话必须整个放得下（面板是固定高度的子窗口）
   报告.面板容纳 = await pop.webContents.executeJavaScript(`(() => {
     const b = document.querySelector('.body')
     return { clientH: b.clientHeight, scrollH: b.scrollHeight, 裁掉了: b.scrollHeight - b.clientHeight }
@@ -361,15 +469,13 @@ async function main() {
 
   const 全过 =
     Object.entries(报告.判据一).every(([, v]) => v === true) &&
-    报告.判据二.摆在锚点下方 &&
-    报告.判据二.三行齐 &&
-    报告.判据二.读数与配置一致 &&
+    Object.entries(报告.判据二).every(([, v]) => v === true) &&
     Object.entries(报告.判据三).every(([, v]) => v) &&
     Object.entries(报告.判据四).every(([, v]) => v) &&
     报告.面板容纳.裁掉了 === 0 &&
     (报告.判据五.网页上禁用 ?? true)
 
-  报告.结论 = 全过 ? '排版三项端到端成立（自家 TXT 页）' : '有判据没过，见上面几条'
+  报告.结论 = 全过 ? '排版四项端到端成立（自家 TXT 页）' : '有判据没过，见上面几条'
   console.log(`\n结论      ${报告.结论}`)
 
   fs.mkdirSync(OUT_DIR, { recursive: true })

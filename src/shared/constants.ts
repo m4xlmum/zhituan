@@ -187,10 +187,10 @@ export const READER_OPACITY_MIN = 0
 export const READER_OPACITY_MAX = 1
 
 /**
- * 阅读排版三项的范围（只作用于本机 EPUB 那一页，见 UiConfig.readerFontSize）。
+ * 阅读排版四项的范围（见 UiConfig.readerFontSize）。
  *
  * 字号给的是 **px** 而不是比例：书的 CSS 里 `font-size` 有 em、%、pt 各种写法，
- * 按比例去乘会得到一个「乘不出确定值」的结果；而这一页的正文归我们排，
+ * 按比例去乘会得到一个「乘不出确定值」的结果；而这几页的正文归我们排，
  * 给一个绝对值最清楚。上下限取的是「还能读」的两头：14px 是手机上正文的地板，
  * 26px 已经比大多数书的标题还大。
  *
@@ -199,6 +199,11 @@ export const READER_OPACITY_MAX = 1
  *
  * 留白是左右两边的百分比（相对正文区宽度）：用百分比而不是 px，换个窗口宽度
  * 读到的还是同一份版心。
+ *
+ * 段距也是**相对字号**的（em），理由与行距一样：字号拉大了，段与段之间也该跟着
+ * 拉开，写死像素会变成「26px 的字挨着 14px 的字该有的缝」。上限 2em 约等于两行
+ * 的距离，再大就不像一本书了；下限只能是 0——它落成的是 `padding`，而 padding
+ * 不接受负值（负的段距会把两段叠在一起，那不是一个可用的档位）。
  */
 export const READER_FONT_MIN = 14
 export const READER_FONT_MAX = 26
@@ -206,16 +211,22 @@ export const READER_LINE_MIN = 1.4
 export const READER_LINE_MAX = 2.4
 export const READER_MARGIN_MIN = 0
 export const READER_MARGIN_MAX = 14
+export const READER_PARA_MIN = 0
+export const READER_PARA_MAX = 2
 
 /**
- * 三项的默认值。
+ * 四项的默认值。
  *
- * 刻意与书页里原先写死的那组排版逐字相同（`17px` / `1.85` / `6%`）：
- * 这一版把写死的值搬进配置，用户看到的版面一个像素都不该变。
+ * 前三项刻意与书页里原先写死的那组排版逐字相同（`17px` / `1.85` / `6%`）：
+ * 那一版把写死的值搬进配置，用户看到的版面一个像素都不该变。
+ *
+ * 段距的默认值是 **0**，同一条规矩的另一面：这一版之前段落之间没有任何额外的
+ * 间距，0 就是「什么都不加」。于是老配置一个数都不用迁，四页的默认版面也不变。
  */
 export const DEFAULT_READER_FONT = 17
 export const DEFAULT_READER_LINE = 1.85
 export const DEFAULT_READER_MARGIN = 6
+export const DEFAULT_READER_PARA = 0
 
 /** 窗口尺寸预设（DIP）。四个都严格 16:9，换尺寸不会让版面在两个方向上各自重排 */
 export const SIZE_PRESETS = {

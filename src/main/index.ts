@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-import { app, BrowserWindow, type Session } from 'electron'
+import { app, BrowserWindow, protocol, type Session } from 'electron'
 import { cpSync, existsSync, renameSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
@@ -26,13 +26,17 @@ import { detectMixedInstall } from './services/installRegistry'
 import { initLogger, log } from './services/logger'
 import { PopoverWindowService } from './services/popoverWindow'
 import {
+  BOOK_SCHEME_PRIVILEGED,
   attachReadingStore,
-  registerBookProtocol,
-  registerBookScheme
+  registerBookProtocol
 } from './services/bookReader'
-import { registerPdfProtocol, registerPdfScheme } from './services/pdfReader'
+import { PDF_SCHEME_PRIVILEGED, registerPdfProtocol } from './services/pdfReader'
 import { ReadingStore } from './services/readingStore'
-import { attachReadingStore as attachTxtReadingStore, registerTxtProtocol, registerTxtScheme } from './services/txtReader'
+import {
+  TXT_SCHEME_PRIVILEGED,
+  attachReadingStore as attachTxtReadingStore,
+  registerTxtProtocol
+} from './services/txtReader'
 import { rendererUrl } from './services/rendererUrl'
 import { hardenWebContents, setupSession } from './services/sessionSetup'
 import { SiteStore } from './services/siteStore'
@@ -146,13 +150,32 @@ function bootstrap(): void {
   // 因此这里只留一个占位，真正的创建放在 whenReady 内。
   let ses: Session | null = null
   hardenWebContents()
-  // 特权协议名只能在 app ready 之前声明；处理程序挂到分区会话上，见 whenReady。
-  // 这三条是同一件事的三半：「自家的阅读页怎么拿到一本书的字节」——一个给 PDF，
-  // 一个给 EPUB，一个给 TXT。放在这里而不是各自模块的初始化里，是因为时机是
-  // Electron 定的。
-  registerPdfScheme()
-  registerBookScheme()
-  registerTxtScheme()
+  /*
+   * 「自家的阅读页怎么拿到一份本机文件的字节」那三条协议的特权，**一次交上去**。
+   *
+   * `protocol.registerSchemesAsPrivileged()` **只认最后一次调用**：分成三次调的话，
+   * 前两次当场作废。量出来的样子是前两条的 `fetch` 全抛
+   * `TypeError: Failed to fetch`，只有最后那条取得到（spike/reader-schemes.js 的
+   * 反面那一跑：同样三条协议、同样三份特权，分开交 → PDF 抛、EPUB 抛、TXT 200；
+   * 一次交 → 三条都 200）。
+   *
+   * 这个坑在 1.6.9 之前一直没露头：那时这里只有两条（PDF 与 EPUB），而「最后一次」
+   * 恰好是 EPUB，顺序上看着一切正常。1.6.9 把本机 TXT 那一条加在末尾之后，
+   * **PDF 与 EPUB 一起哑了**——本机 EPUB 点开就是一句「打不开这本书：Failed to
+   * fetch」（spike/book-tab.js 的 T1），PDF 那一页的字节、cMap、标准字体、wasm
+   * 全是 pdf.js 运行时 fetch 回来的，一样取不到（spike/pdf-tab.js 的 P1/P2/P3，
+   * 那一支量的就是**真主进程**打开一份本机 PDF）。
+   *
+   * 三条的权限本来就完全相同（standard + secure + supportFetchAPI + stream +
+   * corsEnabled），因此各自还写在各自的模块里（`XXX_SCHEME_PRIVILEGED`），
+   * 这里只负责**合起来交一次**。时机不能挪：特权只能在 app ready 之前声明，
+   * 而处理程序要挂在 ready 之后才拿得到的分区会话上（见 whenReady 里那三行）。
+   */
+  protocol.registerSchemesAsPrivileged([
+    PDF_SCHEME_PRIVILEGED,
+    BOOK_SCHEME_PRIVILEGED,
+    TXT_SCHEME_PRIVILEGED
+  ])
 
   function broadcast(channel: string, payload: unknown): void {
     for (const win of BrowserWindow.getAllWindows()) {
