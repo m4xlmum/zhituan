@@ -27,6 +27,12 @@
  * （不是同一行里各占一半，判据是**与下面每一格同宽**）、中点是不是落在格内、
  * 以及拿真鼠标按一下能不能改到**它自己**那一项（另一格不许跟着动）。
  *
+ * 1.6.11 把这一条从两格扩到**三格**（最上面多了「移出即收起」），并修了这支探针
+ * 自己的一处**假通过**：它等的是「视图地址 == 书的 `file:` 地址」，而 1.6.9 起本机
+ * TXT 由自家那一页排、视图载的是 `txt.html`，那个等式从来没成立过——于是这支探针
+ * 从 1.6.9 到 1.6.10 一直停在这一步报「没等到那一屏」，右栏那笔账有整整两个版本
+ * 没人量过。**探针不跑就等于没有**，这一条与它量的那件事同样重要。
+ *
  * 跑法：npx electron --no-sandbox spike/rail-hit.js
  *      npx electron --no-sandbox spike/rail-hit.js --w 960 --h 540
  * 产出：终端一份读数、spike/out/rail-hit.json
@@ -147,11 +153,11 @@ const 量脚本 = `(() => {
       拇指中点y: r1(r.top + 7 + (1 - Number(el.value) / 100) * (r.height - 14))
     }
   })
-  // 最上面那两格开关（1.6.7 从「并排挤在一格里」改成上下各占一格）。
+  // 最上面那几格开关（1.6.7 从「并排挤在一格里」改成上下各占一格；1.6.11 加到三格）。
   // 按**提示文字的开头**去认，不按图标也不按次序：次序是这一问要量的事，
   // 拿它当尺子等于自己证明自己。命中则看按下去的那点是不是落在这一格**里面**
   // （按钮里画着 svg，elementFromPoint 会还回 <path>，所以问的是 closest 归谁）。
-  const 开关 = ['收起时暂停播放', '切走时暂停播放'].map((头) => {
+  const 开关 = ['鼠标移出时自动收起', '收起时暂停播放', '切走时暂停播放'].map((头) => {
     const btn = [...document.querySelectorAll('.rail .stack > .item')].find((e) =>
       (e.title || '').startsWith(头)
     )
@@ -255,16 +261,28 @@ async function main() {
     `window.zhituan.tabs.create({ url: ${JSON.stringify(地址)}, activate: true })`
   )
 
+  /*
+   * 等到那一屏为止。
+   *
+   * **按渲染页认，不按书的地址认**（1.6.11 修的）：1.6.9 起本机 TXT 由自家那一页排
+   * ——视图载的是 `out/renderer/txt.html`，而书本身那个 `file:` 地址只是标签页记着的
+   * 身份，两者从来就不相等。于是这一支从 1.6.9 起一直卡在这儿报「没等到那一屏」，
+   * 而它量的是右栏的账，谁也没想到要重跑一次。认 `txt.html` 才是稳定的那条尺子。
+   */
   let 读的那一屏 = null
   for (let i = 0; i < 60; i++) {
     await delay(500)
-    读的那一屏 = win.contentView.children.find((v) => v.webContents.getURL() === 地址)
+    读的那一屏 = win.contentView.children.find((v) => fileOf(v.webContents.getURL()) === 'txt.html')
     if (读的那一屏) {
       const 好了 = await 读的那一屏.webContents.executeJavaScript('document.readyState').catch(() => 'loading')
       if (好了 === 'complete') break
     }
   }
-  if (!读的那一屏) throw new Error('没等到那一屏：按地址找不到那个视图')
+  if (!读的那一屏) {
+    throw new Error(
+      `没等到那一屏：场上只有 ${win.contentView.children.map((v) => fileOf(v.webContents.getURL())).join('、')}`
+    )
+  }
   await delay(800)
 
   报告.右栏 = await chrome.webContents.executeJavaScript(量脚本)
@@ -278,10 +296,10 @@ async function main() {
     )
   }
 
-  // ---- 最上面那两格开关的形状 --------------------------------------------
+  // ---- 最上面那几格开关的形状 --------------------------------------------
   const 开关 = 报告.右栏.开关 || []
   const 参照 = 报告.右栏.参照
-  console.log(`\n================ 最上面那两格开关（1.6.7 改成上下排）================`)
+  console.log(`\n================ 最上面那几格开关（1.6.11 起三格，上下排）================`)
   console.log(`参照格    ${参照 ? `历史记录 ${JSON.stringify(参照.rect)}` : '(没找到)'}`)
   for (const s of 开关) {
     console.log(
@@ -290,19 +308,20 @@ async function main() {
         : `  ${s.提示}  ${JSON.stringify(s.rect)}  亮=${s.亮}  中点(${s.中点.x},${s.中点.y})→${s.中点归谁}`
     )
   }
-  const 两格 = 开关.length === 2 && 开关.every((s) => !s.缺)
-  const 上下 = 两格 && 开关[1].rect.y >= 开关[0].rect.bottom
-  const 缝两格 = 两格 ? 开关[1].rect.y - 开关[0].rect.bottom : null
-  const 同宽 = !!(两格 && 参照) && 开关.every((s) => s.rect.w === 参照.rect.w)
-  const 同左 = !!(两格 && 参照) && 开关.every((s) => s.rect.x === 参照.rect.x)
-  const 中点都在格内 = 两格 && 开关.every((s) => s.中点落在这一格里)
+  const 都在 = 开关.length === 3 && 开关.every((s) => !s.缺)
+  // 一格接一格地往下排：每一格的顶都在上一格的底之下，缝不该是负的
+  const 缝 = 都在 ? 开关.slice(1).map((s, i) => s.rect.y - 开关[i].rect.bottom) : []
+  const 上下 = 都在 && 缝.every((g) => g >= 0)
+  const 同宽 = !!(都在 && 参照) && 开关.every((s) => s.rect.w === 参照.rect.w)
+  const 同左 = !!(都在 && 参照) && 开关.every((s) => s.rect.x === 参照.rect.x)
+  const 中点都在格内 = 都在 && 开关.every((s) => s.中点落在这一格里)
   console.log(
-    `形状      ${上下 ? '上下排' : '✗ 不是上下排'}  缝=${缝两格}px  ` +
+    `形状      ${上下 ? '上下排' : '✗ 不是上下排'}  缝=${缝.join('/')}px  ` +
       `${同宽 ? '与下面每一格同宽' : '✗ 宽度与别的格不一样'}  ` +
       `${同左 ? '左边界对齐' : '✗ 左边界不齐'}  ` +
-      `${中点都在格内 ? '两格中点都落在格内' : '✗ 有一格的中点落到了别处'}`
+      `${中点都在格内 ? '三格中点都落在格内' : '✗ 有一格的中点落到了别处'}`
   )
-  报告.开关形状 = { 上下, 缝两格, 同宽, 同左, 中点都在格内 }
+  报告.开关形状 = { 上下, 缝, 同宽, 同左, 中点都在格内 }
 
 
   const 段 = []
@@ -394,15 +413,22 @@ async function main() {
 
   // ---- 真按一下最上面那格开关 --------------------------------------------
   /*
-   * 这两格换了地方（并排 → 上下），位置一换就得重量「还按得到吗」——合成 click
-   * 绕得过命中与裁剪（A12 那一族探针的毛病），这里照样派**真鼠标输入**。
+   * 这几格换过地方（并排 → 上下，1.6.7），也加过一格（1.6.11），
+   * 位置一换就得重量「还按得到吗」——合成 click 绕得过命中与裁剪
+   * （A12 那一族探针的毛病），这里照样派**真鼠标输入**。
    *
-   * 一次按两格一起看：按的是上面那格，因此要的是**它自己那一项变、另一格不动**。
+   * 按的是最上面那格「移出即收起」，因此要的是**它自己那一项变、另外两格不动**。
    * 只量「有东西变了」是不够的——按错格也会变。
+   *
+   * 把它打开是安全的：自动收起要「光标进过窗口一次」才武装
+   * （见 windowLeaveWatcher 的 armed），而这扇窗在 (-4000,-4000)、真光标在用户
+   * 自己的屏幕上，永远没进去过；何况 sendInputEvent 动的是页面的合成输入，
+   * 不会挪动系统光标。
    */
-  const 读两个开关 = () =>
+  const 读三个开关 = () =>
     chrome.webContents.executeJavaScript(
       `Promise.all([window.zhituan.config.get()]).then(([c]) => ({
+        移出即收起: c?.stealth?.autoCollapse,
         收起时暂停: c?.stealth?.muteMediaOnCollapse,
         切走时暂停: c?.stealth?.pauseMediaOnSwitch
       })).catch(() => '(读不到)')`
@@ -414,11 +440,11 @@ async function main() {
           const b = [...document.querySelectorAll('.rail .stack > .item')].find((e) => (e.title || '').startsWith(头))
           return b ? b.classList.contains('on') : '(缺)'
         }
-        return { 收起时暂停: 取('收起时暂停播放'), 切走时暂停: 取('切走时暂停播放') }
+        return { 移出即收起: 取('鼠标移出时自动收起'), 收起时暂停: 取('收起时暂停播放'), 切走时暂停: 取('切走时暂停播放') }
       })()`
     )
   const 第一格 = 开关[0]
-  const 按前配置 = await 读两个开关()
+  const 按前配置 = await 读三个开关()
   const 按前格态 = await 格态()
   console.log(`\n================ 真按一下最上面那格开关（sendInputEvent）================`)
   console.log(`按之前    配置=${JSON.stringify(按前配置)}  格上的高亮=${JSON.stringify(按前格态)}`)
@@ -428,26 +454,43 @@ async function main() {
     输入('mouseUp', 第一格.中点.x, 第一格.中点.y)
     await delay(600)
   }
-  const 按后配置 = await 读两个开关()
+  const 按后配置 = await 读三个开关()
   const 按后格态 = await 格态()
   const 按到了 =
     第一格 && !第一格.缺 && typeof 按后配置 === 'object' && typeof 按前配置 === 'object'
-      ? 按后配置.收起时暂停 !== 按前配置.收起时暂停 && 按后配置.切走时暂停 === 按前配置.切走时暂停
+      ? 按后配置.移出即收起 !== 按前配置.移出即收起 &&
+        按后配置.收起时暂停 === 按前配置.收起时暂停 &&
+        按后配置.切走时暂停 === 按前配置.切走时暂停
+      : false
+  /*
+   * 高亮要跟着配置走：那一格亮不亮是 `config.stealth.autoCollapse` 算出来的
+   * （见 Rail.vue 的 autoCollapse），按下去之后界面得当场跟上。配置变了而格子
+   * 没亮，等于用户看不出自己按到了什么——这一条要单独量，不能由「配置变了」代劳。
+   */
+  const 高亮跟着走 =
+    typeof 按后格态 === 'object' && typeof 按前格态 === 'object'
+      ? 按后格态.移出即收起 === 按后配置.移出即收起 &&
+        按后格态.收起时暂停 === 按后配置.收起时暂停 &&
+        按后格态.切走时暂停 === 按后配置.切走时暂停
       : false
   console.log(`按之后    配置=${JSON.stringify(按后配置)}  格上的高亮=${JSON.stringify(按后格态)}`)
   console.log(
     `结论      ${
       按到了
-        ? '真鼠标按得到那一格，改的是它自己那一项、另一格没动'
+        ? '真鼠标按得到那一格，改的是它自己那一项、另两格没动'
         : '✗ 按不到，或者按下去改的不是它自己那一项'
     }`
+  )
+  console.log(
+    `高亮      ${高亮跟着走 ? '三格的高亮与配置逐项一致' : '✗ 有格子的高亮与配置对不上'}`
   )
   报告.真按开关 = {
     按前配置,
     按后配置,
     按前格态,
     按后格态,
-    按到了
+    按到了,
+    高亮跟着走
   }
 
   fs.mkdirSync(OUT_DIR, { recursive: true })

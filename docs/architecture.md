@@ -314,7 +314,7 @@ src/renderer/  chrome 界面 / 弹出面板 / 系统设置 / PDF 阅读页 / EPU
 | `src/shared/txt.ts` | 切章那一套的**全部**（纯函数，主进程与渲染进程共用同一份）：五档编码的 `decodeText`、`splitChapters` / `chapterText` / `isChapterLine`、位置记号的 `formatMark` / `parseMark` / `locateChapter`。它是「章」这件事唯一的定义处 |
 | `src/main/services/pageStyler.ts` | 注入访客页面的四样东西：透明底、藏滚动条、离线阅读透明度在 **Chromium 自己排的本机文本**那一半上的 `opacity`、以及排版四项里对那个 `pre` 成立的三项（字号 / 行距 / 左右留白；**段距在 `pre` 上没有对象**，那一行因此是灰的，见第 22 条）。**后两样都只给本机文件**（见第 20、22 条；PDF 那一半由页面自己落在画布底色上，EPUB 与 TXT 那两页自己从配置里读） |
 | `src/renderer/src/txt/TxtApp.vue` | 本机 TXT 的阅读页：认编码、切章、**一次只把一章放进 DOM**（`chapterText`），滚动到章末再滚一下 / 方向键 / 目录里点一条三条通道翻章，位置按 600ms 去抖上报（第 24 条那道闸在主进程那一头） |
-| `src/renderer/src/composables/usePopover.ts` | 「从按下的那一格上开一张弹出面板」的唯一一处：量锚点、报给主进程摆位（顶栏那枚 Aa 与右栏那四格共用） |
+| `src/renderer/src/composables/usePopover.ts` | 「从按下的那一格上开一张弹出面板」的唯一一处：量锚点、报给主进程摆位（顶栏那枚 Aa 与右栏那两格——历史 / 书签——共用。**右栏曾经有四格走这里**，「站点」那一格 1.6.7 去掉、缩放那三格走的是「某一页」那条 IPC 不经面板） |
 | `src/renderer/src/home/useRows.ts` | 起始页的行模型与交互：三套主题共用，世界组件只负责画 |
 | `src/renderer/src/pdf/PdfApp.vue` | 阅读页：pdf.js 把一页画进画布，再把纸收掉、把字上成一份固定的近黑墨（这一页不写主题，见 `useTheme.ts`；排版在 `styles/pdf.css`）；离线阅读透明度在这一页上落的是**画布的元素底色**（那张纸），不是 `opacity`（见第 20 条） |
 | `src/renderer/src/pdf/keying.ts` | 键控本身：这一页的纸是哪一张（有没有、浅还是深）、墨的零点在哪儿、要不要翻面 |

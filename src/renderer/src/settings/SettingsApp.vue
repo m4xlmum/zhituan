@@ -581,7 +581,9 @@ function setSizePreset(preset: SizePreset): void {
                   })
                 "
               />
-              <span class="dim">默认关闭。开启后鼠标移开一段时间也会自动收起</span>
+              <span class="dim">
+                默认关闭。开启后鼠标移开一段时间也会自动收起。右栏最上面那一格就是这个开关
+              </span>
             </div>
           </div>
 
@@ -617,7 +619,7 @@ function setSizePreset(preset: SizePreset): void {
                 "
               />
               <span class="dim">
-                收起成球、藏进托盘、最小化都算；回到展开态接着放。右栏最上面那两格紧挨着，就是这两个开关
+                收起成球、藏进托盘、最小化都算；回到展开态接着放。右栏紧挨着的那两格，就是这两个开关
               </span>
             </div>
           </div>
