@@ -221,7 +221,25 @@ export class WindowController {
     const cfg = this.deps.config.get()
     const w = cfg.window
     const origin = resolveInitialOrigin(w)
-    const bounds: Rect = { x: origin.x, y: origin.y, width: w.width, height: w.height }
+    let bounds: Rect = { x: origin.x, y: origin.y, width: w.width, height: w.height }
+
+    /*
+     * 上次记的坐标可能已经不在任何一块屏幕上了（那块显示器被拔了、远程会话里的
+     * 显示器布局与上次不同、分辨率换过）。原样摆回去的话，屏幕上什么都没有，
+     * 而托盘只能把它「提到最前」——用户是真的找不回来（PRODUCT 里那条「总能
+     * 找回窗口」）。因此建窗之前先验一次，跑丢了就摆回主显示器正中。
+     */
+    if (this.lostOnScreen(bounds)) {
+      const rescued = this.fitCentered(
+        screen.getPrimaryDisplay().workArea,
+        bounds.width,
+        bounds.height
+      )
+      log.warn(
+        `上次记的窗口位置 ${bounds.x},${bounds.y} 已不在任何显示器上，改摆到主显示器 ${rescued.x},${rescued.y}`
+      )
+      bounds = rescued
+    }
 
     const win = new BaseWindow({
       ...bounds,
@@ -545,6 +563,9 @@ export class WindowController {
     const win = this.win
     if (!win) return
     if (this.mode === 'collapsed') this.transitionTo('expanded')
+
+    // 记忆里的位置若已经不在任何屏幕上，先把窗口摆回来——否则展开的是一块看不见的窗
+    this.rescueIfLost()
 
     const target = this.expandedBounds ?? defaultExpandedBounds(this.deps.config.get())
     this.surface?.apply({
@@ -961,30 +982,104 @@ export class WindowController {
   /**
    * 默认档 16:9，在当前显示器工作区里居中。
    *
-   * 屏幕装不下默认档时按工作区等比缩到还保 16:9 的最大值：先夹宽度、再夹高度，
-   * 两次都按 ASPECT_RATIO 反推另一边，因此结果恒是 16:9。取所在显示器而不是主
-   * 显示器——窗口在哪块屏上，就该在哪块屏的中心（与 workArea() 同一条规矩）。
+   * 取所在显示器而不是主显示器——窗口在哪块屏上，就该在哪块屏的中心
+   * （与 workArea() 同一条规矩）。
    */
   private centeredDefaultBounds(bounds: Rect): Rect {
-    const area = screen.getDisplayMatching(bounds).workArea
-    // 显式标成 number：SIZE_PRESETS 是 `as const`，它的字段是字面量类型（960 这种），
-    // 直接接过来就没法再赋值了。下面要按工作区夹一次，因此这里要的是普通 number。
-    let width: number = SIZE_PRESETS.medium.width
-    let height: number = SIZE_PRESETS.medium.height
-    if (width > area.width) {
-      width = area.width
-      height = Math.round(width / ASPECT_RATIO)
+    return this.fitCentered(
+      screen.getDisplayMatching(bounds).workArea,
+      SIZE_PRESETS.medium.width,
+      SIZE_PRESETS.medium.height
+    )
+  }
+
+  /**
+   * 把一块矩形在给定工作区里居中；装不下就按 16:9 缩到还装得下的最大值。
+   *
+   * 「装不下」只可能发生在小屏上：默认档 960×540 比工作区还宽（或还高）时，先夹
+   * 宽度、再夹高度，两次都按 ASPECT_RATIO 反推另一边，因此结果恒是 16:9。显示器的
+   * 选择交给调用方：显形并居中用「窗口所在那块」（getDisplayMatching），救回跑丢的
+   * 窗口用「主显示器」（原来那块屏已经找不到了，主屏是最稳的落点）。
+   */
+  private fitCentered(area: Rect, width: number, height: number): Rect {
+    let w = width
+    let h = height
+    if (w > area.width) {
+      w = area.width
+      h = Math.round(w / ASPECT_RATIO)
     }
-    if (height > area.height) {
-      height = area.height
-      width = Math.round(height * ASPECT_RATIO)
+    if (h > area.height) {
+      h = area.height
+      w = Math.round(h * ASPECT_RATIO)
     }
     return {
-      x: area.x + Math.round((area.width - width) / 2),
-      y: area.y + Math.round((area.height - height) / 2),
-      width,
-      height
+      x: area.x + Math.round((area.width - w) / 2),
+      y: area.y + Math.round((area.height - h) / 2),
+      width: w,
+      height: h
     }
+  }
+
+  /**
+   * 这块矩形是不是已经「丢」了：它落在所有显示器工作区之外，或者露出来的部分小到
+   * 抓不住。
+   *
+   * 判据是「至少露出一块 120×TOP_BAR_H 的可见区」——TOP_BAR_H（44）是顶栏高，露出
+   * 这么一条，用户就能按住它把窗口拖回来；比这更小等于没有（一条 3px 的缝在屏幕上
+   * 和不存在一样）。这也是它不只看「面积大于 0」的原因。
+   *
+   * 用 getAllDisplays 而不是主显示器：窗口停在副屏（坐标可能是负的）是正常用法，
+   * 只有当**所有**屏幕上它都露不出那一条时，才算丢了。判据取自真机：一块 1920×1080
+   * 的单屏上，`x=-1513` 的窗口与可见区交叠为 0，于是「启动后屏幕上什么都没有」。
+   */
+  private lostOnScreen(rect: Rect): boolean {
+    const needW = 120
+    const needH = TOP_BAR_H
+    for (const display of screen.getAllDisplays()) {
+      const a = display.workArea
+      const w = Math.min(rect.x + rect.width, a.x + a.width) - Math.max(rect.x, a.x)
+      const h = Math.min(rect.y + rect.height, a.y + a.height) - Math.max(rect.y, a.y)
+      if (w >= needW && h >= needH) return false
+    }
+    return true
+  }
+
+  /**
+   * 记忆里的展开矩形若已经不在任何显示器上，把它摆回主显示器正中。
+   *
+   * 这是「总能找回窗口」那条原则的最后一道网：托盘单击 / 托盘菜单 / 老板键 / 第二个
+   * 实例 / 点球展开都会走到这里（`reveal` 与 `expand` 各调一次）。用户不必知道窗口
+   * 原本停在哪块屏上，只要还能按到托盘或老板键就能把它拿回来——从前这条路是没有的，
+   * 托盘只把它「提到最前」，于是窗口跑出屏幕之后，越点越没反应。
+   *
+   * 只在真的「丢了」时才动它：用户自己把窗口拖到屏幕边缘、只露出一大截，那是他有意
+   * 为之，不该被我们拽回来（判据见 lostOnScreen）。
+   */
+  private rescueIfLost(): void {
+    const expanded = this.expandedBounds
+    if (!expanded || !this.lostOnScreen(expanded)) return
+
+    /*
+     * 若正最大化着（铺满的那块工作区所在的显示器没了），先退出最大化，用还原矩形当
+     * 落点——回来后是一扇正常的 16:9，而不是继续铺满一块已经不存在的屏。
+     * syncChromeOrder 必须跟着走：不然后面重排版面时界面层会停在「最大化」那一态
+     * （抬在网页之上、铺满整窗），把网页的点击整个吃掉（spike/live-app.js 的 A9）。
+     */
+    if (this.maximized) {
+      this.maximized = false
+      this.autoMaximized = false
+    }
+    const base = this.restoreBounds ?? expanded
+    this.restoreBounds = null
+
+    const next = this.fitCentered(screen.getPrimaryDisplay().workArea, base.width, base.height)
+    log.warn(
+      `记忆里的窗口位置 ${expanded.x},${expanded.y} 已不在任何显示器上，改摆到主显示器 ${next.x},${next.y}`
+    )
+    this.applyBounds(next)
+    this.expandedBounds = this.win?.getBounds() ?? next
+    this.persistExpandedBounds()
+    this.syncChromeOrder()
   }
 
   /**
@@ -1031,6 +1126,13 @@ export class WindowController {
     if (win.isMinimized()) win.restore()
     // 若停在收起态则一并展开：用户要的是完整界面，不是一颗球
     if (this.mode !== 'expanded') this.transitionTo('expanded')
+
+    /*
+     * 记忆里的位置若已经不在任何屏幕上（那块显示器被拔了、远程会话的布局与上次不同），
+     * 先把它摆回主显示器正中——否则「唤回」出来的是一扇停在屏幕外的窗，用户看到的是
+     * 「点了没反应」。托盘单击 / 托盘菜单「现形」/ 老板键 / 第二个实例都会走到这里。
+     */
+    this.rescueIfLost()
 
     // 从收起态或托盘回来时，版面与 chrome 视图都还停在球的尺寸上，必须重算。
     // 不能指望 setBounds 触发的 resize 兜底——那是巧合，不是保证。
