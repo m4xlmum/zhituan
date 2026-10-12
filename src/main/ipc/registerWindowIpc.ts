@@ -35,6 +35,29 @@ export function registerWindowIpc(ctx: AppContext): void {
     ctx.controller.restore()
   })
 
+  /*
+   * 显形并居中（右栏那一格）。它一次做两件事，因为点这一格的人只有一种意图
+   * ——「我要清清楚楚地看见它」，而「防截屏 / 防共享」正好挡在这条路上：
+   * 开着那一项时，窗口在自己截的图里与别人看到的共享画面里都是一片黑，
+   * 点了这一格却什么都没看见，看着就像功能坏了。
+   *
+   * 关掉那一项因此写在这里而不是留给界面发第二次 configPatch：两条 IPC
+   * 之间窗口会被重排一次，而这一次重排会先把那张黑底的画面推出去。
+   */
+  ipcMain.handle(INVOKE.winCenterReveal, () => {
+    if (ctx.config.get().stealth.contentProtection) {
+      /*
+       * 改配置 + 立刻推给窗口，与 registerDataIpc 里那条路逐字同构。
+       * 只改配置是不够的：contentProtection 不属于任何一次版面变化，
+       * 不显式推一次，窗口会一直停在旧值上（它不在 applied 那套「值没变就跳过」
+       * 能覆盖到的路径里——那条路只在 apply 时比对，而这里不一定有 apply）。
+       */
+      ctx.config.patch({ stealth: { contentProtection: false } })
+      ctx.controller.setContentProtection(false)
+    }
+    ctx.controller.revealCentered()
+  })
+
   // 拖动走单向消息：高频且不需要回执
   ipcMain.on(SEND.dragStart, () => ctx.controller.beginDrag())
   ipcMain.on(SEND.dragEnd, () => ctx.controller.endDrag())

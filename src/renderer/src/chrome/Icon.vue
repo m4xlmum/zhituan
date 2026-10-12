@@ -28,6 +28,7 @@ defineProps<{
     | 'pin'
     | 'maximize'
     | 'restore'
+    | 'center'
     | 'pause'
     | 'stop'
     | 'auto-collapse'
@@ -110,6 +111,18 @@ defineProps<{
     <template v-else-if="name === 'restore'">
       <rect x="4" y="9" width="11" height="11" rx="2" />
       <path d="M9 9V6a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" />
+    </template>
+    <!--
+      显形并居中：一个准星（十字 + 中心环 + 中心点）。
+      「居中」这件事没有比准星更直接的说法，而它也不必与相邻几枚区分得太费力——
+      它孤零零待在右栏开关组末尾，周围没有别的「瞄准」类图标。
+      不做「窗口方框 + 中心点」：15px 上那个方框会与 'stop'、'auto-collapse'
+      那两枚圆角方框糊在一起（同一页里 'file'、'auto-collapse' 都吃过这个亏）。
+    -->
+    <template v-else-if="name === 'center'">
+      <circle cx="12" cy="12" r="7" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3" />
     </template>
     <!--
       收起时暂停播放：两道竖条的暂停符。

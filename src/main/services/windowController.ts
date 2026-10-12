@@ -18,6 +18,7 @@
 import { BaseWindow, WebContentsView, screen } from 'electron'
 import {
   ADDRESS_H,
+  ASPECT_RATIO,
   BALL_MARGIN,
   BALL_SIZE,
   DRAG_TICK_MS,
@@ -866,6 +867,124 @@ export class WindowController {
   revealFully(): void {
     this.reveal(true)
     this.setOpacity(1)
+  }
+
+  /**
+   * 显形并居中：把整扇窗恢复成默认的 16:9 尺寸，摆到当前显示器的正中央。
+   *
+   * 由右栏那一格触发（见 chrome/Rail.vue），正好是「最大化」的相反一件事：
+   * 最大化铺满整个工作区，它则回到默认档并居中。三件事一起做，因为点这一格的人
+   * 只有一种意图——「我要清清楚楚地看见它」：
+   *
+   *   1. **退出最大化 / 网页全屏**：窗口若还铺满着工作区，谈不上「居中」。
+   *      网页全屏那一份要一并退掉，理由与 restore() 完全相同——窗口不再铺满时，
+   *      一个「网页以为自己在全屏」的视频会在还原后的窗口里继续铺满整块正文区。
+   *   2. **从收起 / 托盘 / 最小化回来，并把整体透明度恢复到 100%**：用户点的是
+   *      「显形」，那就得真的看得见——窗口若还淡在 40% 上，摆到正中也算不上显形
+   *      （与托盘菜单那句「现形」是同一条规矩）。
+   *   3. **关掉「防截屏 / 防共享」**：写在 IPC 那一侧（registerWindowIpc），
+   *      因为它是配置意图、不是窗口几何；这里只负责把它呈现出来的这一半。
+   *
+   * 尺寸取默认档（SIZE_PRESETS.medium，960×540）；显示器若装不下，按工作区
+   * 等比缩到还保 16:9 的最大值——小屏上不至于把它摆出一截到屏幕外面去。
+   */
+  revealCentered(): void {
+    const win = this.win
+    if (!win) return
+
+    const wasMaximized = this.maximized
+
+    /*
+     * 退出最大化（含被网页全屏捎带进来的那一种）。这里刻意不调 restore()：
+     * 它回的是「最大化之前那块」矩形，而这一步要的是默认档 + 居中，
+     * 两者只有在「最大化之前恰好就是默认档」时才重合。
+     * 清掉三个标记即可，界面靠下面 setOpacity 里那次广播换回未最大化的样子。
+     */
+    this.maximized = false
+    this.restoreBounds = null
+    this.autoMaximized = false
+
+    // 最小化 / 收起 / 托盘里都先回到展开态。transitionTo 会广播状态，并把标签页
+    // 那一侧连同正在播的媒体一起唤回来（见 deps.onVisibilityChange）。
+    if (win.isMinimized()) win.restore()
+    if (this.mode !== 'expanded') this.transitionTo('expanded')
+
+    /*
+     * 摆成默认档并居中。尺寸走 applyBounds 这一条路出去——与收展切换、拖动缩放、
+     * 换预设是同一条（见 applyBounds 的注释）；读回实测矩形：这一摆之后窗口的
+     * 实际矩形就是「它现在在哪」，收起、拖动都按它算（与 setMaximized(true)
+     * 结束后读回是同一条理由）。
+     */
+    const target = this.centeredDefaultBounds(win.getBounds())
+    this.applyBounds(target)
+    this.expandedBounds = win.getBounds()
+    this.persistExpandedBounds()
+
+    // 次序与 setMaximized 一致：先对齐叠放次序，再重排版面（重排里会把界面层
+    // 按新形态重新摆一次），最后 syncChromeBounds 是收尾的一记保险，与 expand() 同。
+    this.syncChromeOrder()
+    this.recomputeLayout()
+    this.syncChromeBounds()
+    // 重新开始计时，避免刚露出来就被判成「光标在外」而立刻收起
+    this.watcher?.rearm()
+
+    /*
+     * 「显形」的另一半：整扇窗恢复不透明。
+     *
+     * 走 setOpacity 而不是直接调 win.setOpacity：它是唯一合法路径（见
+     * windowSurface.ts），而且会**落盘并广播**——右栏那条「整体」滑块与设置页
+     * 那条会跟着一起回到 100%，不会留下「配置是 1、滑块还停在 40%」的两份真相。
+     * 这一步顺带把「刚刚可能变过的窗口状态」广播出去：窗口若本来是最大化着的
+     * （mode 仍是 expanded），上面那次 transitionTo 根本不会触发，而界面正停在
+     * 「右上角一小块」那一态上——不广播，它就不知道自己该变回完整界面。
+     *
+     * 顺序要紧：setOpacity 在非展开态会提前返回，因此必须排在 mode 已是展开态
+     * 之后（与 revealFully 里那条注释同一个道理）。
+     */
+    this.setOpacity(1)
+
+    // 用户主动把它叫到眼前：激活窗口，而不是像 show() 那样只出现不抢焦点。
+    // 与 showForeground() 同一层意思，但它还要摆位，因此不能直接复用它。
+    win.show()
+    win.moveTop()
+    win.focus()
+    this.reassert()
+
+    /*
+     * 网页那份全屏也要退掉（窗口不再铺满工作区）。只有「刚才真的最大化着」才退：
+     * 把一个正停在展开态的窗口判成「无需还原」却顺手退掉它的全屏，是另一回事
+     * （与 restore() 里那条完全一致）。
+     */
+    if (wasMaximized) this.deps.onLeavePageFullscreen()
+  }
+
+  /**
+   * 默认档 16:9，在当前显示器工作区里居中。
+   *
+   * 屏幕装不下默认档时按工作区等比缩到还保 16:9 的最大值：先夹宽度、再夹高度，
+   * 两次都按 ASPECT_RATIO 反推另一边，因此结果恒是 16:9。取所在显示器而不是主
+   * 显示器——窗口在哪块屏上，就该在哪块屏的中心（与 workArea() 同一条规矩）。
+   */
+  private centeredDefaultBounds(bounds: Rect): Rect {
+    const area = screen.getDisplayMatching(bounds).workArea
+    // 显式标成 number：SIZE_PRESETS 是 `as const`，它的字段是字面量类型（960 这种），
+    // 直接接过来就没法再赋值了。下面要按工作区夹一次，因此这里要的是普通 number。
+    let width: number = SIZE_PRESETS.medium.width
+    let height: number = SIZE_PRESETS.medium.height
+    if (width > area.width) {
+      width = area.width
+      height = Math.round(width / ASPECT_RATIO)
+    }
+    if (height > area.height) {
+      height = area.height
+      width = Math.round(height * ASPECT_RATIO)
+    }
+    return {
+      x: area.x + Math.round((area.width - width) / 2),
+      y: area.y + Math.round((area.height - height) / 2),
+      width,
+      height
+    }
   }
 
   /**

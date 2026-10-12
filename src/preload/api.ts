@@ -103,6 +103,7 @@ export const api: ZhituanApi = {
     expand: () => ipcRenderer.invoke(INVOKE.winExpand) as Promise<void>,
     maximize: () => ipcRenderer.invoke(INVOKE.winMaximize) as Promise<void>,
     restore: () => ipcRenderer.invoke(INVOKE.winRestore) as Promise<void>,
+    centerReveal: () => ipcRenderer.invoke(INVOKE.winCenterReveal) as Promise<void>,
     // 拖动走单向消息：定位由主进程算，不需要回执，也不该有往返延迟
     dragStart: () => {
       ipcRenderer.send(SEND.dragStart)

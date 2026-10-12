@@ -76,6 +76,15 @@ export const INVOKE = {
    */
   winMaximize: 'window:maximize',
   winRestore: 'window:restore',
+  /**
+   * 显形并居中。
+   *
+   * 把整扇窗恢复成默认的 16:9 尺寸、摆到当前显示器正中、整体透明度回到 100%，
+   * 并**关掉**「防截屏 / 防共享」——点这一格的人多半正是要把它截下来或共享出去。
+   * 与 maximize / restore 一样走 invoke：它改版面，界面要等主进程排完
+   * 再按回传的状态绘制，见 WindowController.revealCentered。
+   */
+  winCenterReveal: 'window:centerReveal',
   winOpenBallMenu: 'window:openBallMenu',
   winSetSize: 'window:setSize',
   winMinimize: 'window:minimize',
@@ -343,6 +352,11 @@ export interface ZhituanApi {
     maximize(): Promise<void>
     /** 从最大化回到之前的 16:9 矩形 */
     restore(): Promise<void>
+    /**
+     * 显形并居中：恢复默认 16:9 尺寸、摆到当前显示器正中、整体透明度回到 100%，
+     * 并关掉「防截屏 / 防共享」。收起成球 / 托盘 / 最小化时一并回到展开态。
+     */
+    centerReveal(): Promise<void>
     /**
      * 开始拖动窗口。定位由主进程计算——它读得到全局光标位置，
      * 因此即使指针短暂移出窗口也不会丢失跟踪。
